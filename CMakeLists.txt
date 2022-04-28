@@ -7,10 +7,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
+find_library(aio_LIBRARIES aio)
+
 include_directories(include)
 set(LIBS stdc++fs
     glog
-    gflags)
+    gflags
+    aio)
 
 add_library(mycp src/mycp.cpp)
 
