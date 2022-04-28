@@ -8,10 +8,18 @@
 #include <libaio.h>
 #include <stdint.h>
 #include <string.h>
+#include <filesystem>
+#include <boost/filesystem.hpp>
+ #include <sys/sendfile.h>
+
+#include "trie.h"
 
 using std::vector;
 using std::unordered_map;
 using std::string;
+using std::cout;
+using std::endl;
+namespace fs = boost::filesystem;
 
 namespace mycp {
 
@@ -77,7 +85,7 @@ public:
         if (this->fdSrc < 0) {
             LOG(FATAL) << "failed to open source file: " << pathSrc;
         }
-        this->fdDst = open(pathDst.c_str(), O_WRONLY | O_CREAT);
+        this->fdDst = open(pathDst.c_str(), O_WRONLY | O_TRUNC | O_CREAT);
         if (this->fdDst < 0) {
             LOG(FATAL) << "failed to open destination file: " << pathDst;
         }
@@ -144,6 +152,104 @@ public:
     }
 
 private:
+};
+
+class RecursiveCopier {
+
+public:
+    string srcDir;
+    string dstDir;
+    bool isVerbose = true;
+
+    RecursiveCopier() {
+        LOG(INFO) << "use default RecursiveCopier constructor is dangerous!\n"
+                  << "pls use RecursiveCopier(const string& srcDir, const string& dstDir) instead";
+    }
+
+    RecursiveCopier(const string& srcDir, const string& dstDir) {
+        this->srcDir = srcDir;
+        this->dstDir = dstDir;
+        struct stat srcStat, dstStat;
+        // check if directory reference: https://stackoverflow.com/questions/4553012/checking-if-a-file-is-a-directory-or-just-a-file
+        if (stat(this->srcDir.c_str(), &srcStat)) {
+            LOG(FATAL) << "cannot open src dir: " << this->srcDir;
+        }
+        if (!S_ISDIR(srcStat.st_mode)) {
+            LOG(ERROR) << "expected a src dir, but got a file: " << this->srcDir;
+        } 
+        if (stat(this->dstDir.c_str(), &dstStat)) {
+            if (mkdir(this->dstDir.c_str(), 0777)) {
+                LOG(FATAL) << "failed to create dst dir: " << this->dstDir;
+            }
+        } else if (!S_ISDIR(dstStat.st_mode)) {
+            LOG(FATAL) << "expected a dst dir, but didn't get a dir: " << this->dstDir;
+        }
+    }
+
+    ~RecursiveCopier() {}
+
+    void recursiveCopy() {
+        for (const fs::directory_entry& entry : fs::directory_iterator(this->srcDir)) {
+            const fs::path& currSrcPath = entry.path();
+            const fs::path& currDstPath = this->dstDir / fs::relative(currSrcPath, this->srcDir);
+            struct stat srcStat, dstStat;
+            if (stat(currSrcPath.c_str(), &srcStat)) {
+                LOG(FATAL) << "[RecursiveCopier::recursiveCopy] cannot open src dir: " << this->srcDir;
+            }
+            if (S_ISREG(srcStat.st_mode)) {
+                handleFile(currSrcPath, currDstPath, srcStat);
+            } else if (S_ISDIR(srcStat.st_mode)) {
+                handleDir(currSrcPath, currDstPath);
+            } else {
+                LOG(FATAL) << "[RecursiveCopier::recursiveCopy] undefined code path!";
+            }
+        }
+    }
+
+private:
+    void handleFile(const fs::path& srcPath, const fs::path& dstPath, const struct stat& srcStat) {
+        // if the file is less than one blksize (inclusive)
+        // reference: https://stackoverflow.com/questions/10543230/fastest-way-to-copy-data-from-one-file-to-another-in-c-c
+        if (isVerbose) {
+            cout << "srcStat.st_blksize: " << srcStat.st_blksize << endl;
+        }
+        if (srcStat.st_size <= srcStat.st_blksize) {
+            int fdSrc, fdDst;
+            fdSrc = open(srcPath.c_str(), O_RDONLY); // don't need to check this open
+            if (access(dstPath.c_str(), F_OK)) {
+                fdDst = open(dstPath.c_str(), O_CREAT | O_EXCL, srcStat.st_mode);
+                if (fdDst < 0) {
+                    LOG(FATAL) << "[RecursiveCopier::handleFile] failed to create dst file: "
+                               << dstPath;
+                }
+                close(fdDst);
+            }
+            fdDst = open(dstPath.c_str(), O_TRUNC | O_WRONLY);
+            if (fdDst < 0) {
+                LOG(FATAL) << "[RecursiveCopier::handleFile] failed to open dst file: "
+                            << dstPath;
+            }
+            int nbytes = sendfile(fdDst, fdSrc, 0, srcStat.st_size);
+            if (nbytes < srcStat.st_size) {
+                LOG(ERROR) << "[RecursiveCopier::handleFile] Requsted sendfile size doesn't match with responded size\n"
+                           << "Requested: " << srcStat.st_size << "; Responded: " << nbytes;
+            }
+            close(fdSrc);
+            close(fdDst);
+        }
+    }
+
+    void handleDir(const fs::path& srcPath, const fs::path& dstPath) {
+        struct stat srcStat, dstStat;
+        if (stat(dstPath.c_str(), &dstStat)) {
+            if (!fs::create_directory(dstPath)) {
+                LOG(FATAL) << "[RecursiveCopier::handleDir] failed creating the dst dir: " << dstPath; 
+            }
+        } else if (S_ISREG(dstStat.st_mode)) {
+            LOG(FATAL) << "[RecursiveCopier::handleDir] we have naming conflicts in dstDir... "
+                       << "expected empty or some directory, but got a file";
+        }
+    }
 };
 
 }

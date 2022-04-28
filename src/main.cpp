@@ -17,23 +17,9 @@ int main(int argc, char **argv) {
     }
 
     mycp::init(16);
-    struct stat srcStat, dstState;
-    // check if directory reference: https://stackoverflow.com/questions/4553012/checking-if-a-file-is-a-directory-or-just-a-file
-    if (stat(FLAGS_src.c_str(), &srcStat)) {
-        LOG(FATAL) << "cannot open src dir: " << FLAGS_src;
-    }
-    if (!S_ISDIR(srcStat.st_mode)) {
-        LOG(ERROR) << "expected a src dir, but got a file: " << FLAGS_src;
-    } 
-    if (stat(FLAGS_dst.c_str(), &dstState)) {
-        if (mkdir(FLAGS_dst.c_str(), 0777)) {
-            LOG(FATAL) << "failed to create dst dir: " << FLAGS_dst;
-        }
-    } else if (!S_ISDIR(dstState.st_mode)) {
-        LOG(FATAL) << "expected a dst dir, but didn't get a dir: " << FLAGS_dst;
-    }
 
-    
+    RecursiveCopier rCopier(FLAGS_src, FLAGS_dst);
+    rCopier.recursiveCopy();
 
     mycp::shutdown();
 

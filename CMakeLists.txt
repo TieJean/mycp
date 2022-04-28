@@ -8,12 +8,14 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 find_library(aio_LIBRARIES aio)
+find_package(Boost COMPONENTS filesystem REQUIRED)
 
-include_directories(include)
+include_directories(include ${Boost_INCLUDE_DIR})
 set(LIBS stdc++fs
     glog
     gflags
-    aio)
+    aio
+    ${Boost_LIBRARIES})
 
 add_library(mycp src/mycp.cpp)
 
