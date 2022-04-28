@@ -27,19 +27,13 @@ struct AIOParam {
     uint8_t nTotalEvents;
 };
 
-io_context_t ctx;
-void init(const unsigned nEvents) {
-    if (io_setup(nEvents, &ctx) != 0) {
-        LOG(FATAL) << "io_setup failed";
-    }
-}
-void shutdown() {
-    io_destroy(ctx);
-}
+extern io_context_t ctx;
+void init(const unsigned nEvents);
+void shutdown();
 
 class Copier {
 
-static unordered_map<iocb*, Copier*> iocbs2Copiers;;
+static unordered_map<iocb*, Copier*> iocbs2Copiers;
 
 static void readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2) {
     if (res2 != 0) { LOG(ERROR) << "error in readCallback"; }
@@ -104,7 +98,7 @@ public:
             Copier* cpPtr  = new Copier();
             iocbPtr->u.c.buf = new char[this->blksize];
             iocbFreeList.emplace_back(iocbPtr);
-            iocbs2Copiers[iocbPtr] = cpPtr;
+            Copier::iocbs2Copiers[iocbPtr] = cpPtr;
         }
 
     }
@@ -159,7 +153,7 @@ class RecursiveCopier {
 public:
     string srcDir;
     string dstDir;
-    bool isVerbose = true;
+    bool isVerbose = false;
 
     RecursiveCopier() {
         LOG(INFO) << "use default RecursiveCopier constructor is dangerous!\n"
@@ -208,12 +202,13 @@ public:
 
 private:
     void handleFile(const fs::path& srcPath, const fs::path& dstPath, const struct stat& srcStat) {
-        // if the file is less than one blksize (inclusive)
-        // reference: https://stackoverflow.com/questions/10543230/fastest-way-to-copy-data-from-one-file-to-another-in-c-c
         if (isVerbose) {
             cout << "srcStat.st_blksize: " << srcStat.st_blksize << endl;
         }
-        if (srcStat.st_size <= srcStat.st_blksize) {
+        // small files: if the file is less than one blksize (inclusive)
+        // reference: https://stackoverflow.com/questions/10543230/fastest-way-to-copy-data-from-one-file-to-another-in-c-c
+        // if (srcStat.st_size <= srcStat.st_blksize) {
+        if (srcStat.st_size <= 1024) {
             int fdSrc, fdDst;
             fdSrc = open(srcPath.c_str(), O_RDONLY); // don't need to check this open
             if (access(dstPath.c_str(), F_OK)) {
@@ -236,6 +231,13 @@ private:
             }
             close(fdSrc);
             close(fdDst);
+        } else {
+            AIOParam params;
+            params.nTotalEvents = 8;
+            string srcPathStr = srcPath.string();
+            string dstPathStr = dstPath.string();
+            Copier copier(srcPathStr, dstPathStr, params);
+            copier.copy();
         }
     }
 
