@@ -49,7 +49,7 @@ public:
     vector<iocb*> iocbFreeList;
     vector<iocb*> iocbBusyList;
     off_t offset;
-    bool isVerbose = true;
+    bool isVerbose = false;
 
     Copier() {}
     Copier(const string& pathSrc, const string& pathDst, const AIOParam& params) {
@@ -73,10 +73,9 @@ public:
 
         for (size_t i = 0; i < params.nMaxCopierEvents; ++i) {
             iocb* iocbPtr  = new iocb();
-            Copier* cpPtr  = new Copier();
             iocbPtr->u.c.buf = new char[this->blksize];
             iocbFreeList.emplace_back(iocbPtr);
-            Copier::iocbs2Copiers[iocbPtr] = cpPtr;
+            Copier::iocbs2Copiers[iocbPtr] = this;
         }
 
     }
@@ -113,13 +112,12 @@ public:
             this->offset += rwSize;
         }
 
-        if (iocbFreeList.size() == this->params.nMaxCopierEvents || this->offset >= this->filesize) {
+        if (iocbBusyList.size() == this->params.nMaxCopierEvents || this->offset >= this->filesize) {
             int nr = io_submit(ctx, this->iocbBusyList.size(), this->iocbBusyList.data());
             if (nr != this->iocbBusyList.size()) {
                 LOG(INFO) << "Requested event nr doesn't match responded event nr\n"
                           << "Requested: " << this->iocbBusyList.size() << "Responded: " << nr;
             }
-            cout << "[Copier::copy] nr=" << nr << endl;
             this->iocbBusyList.erase(this->iocbBusyList.begin(), this->iocbBusyList.begin() + nr);
         }
     }
@@ -133,7 +131,7 @@ public:
     string srcDir;
     string dstDir;
     AIOParam params;
-    bool isVerbose = true;
+    bool isVerbose = false;
 
     RecursiveCopier() {
         LOG(INFO) << "use default RecursiveCopier constructor is dangerous!\n"
@@ -218,8 +216,8 @@ private:
             Copier copier(srcPathStr, dstPathStr, this->params);
             copier.blksize = 1024;
             copier.copy();
+            handleCallback();
         }
-        handleCallback();
     }
 
     void handleDir(const fs::path& srcPath, const fs::path& dstPath) {
@@ -235,7 +233,7 @@ private:
     }
 
     void handleCallback() {
-        static io_event events[64]; // TODO FIXME
+        io_event events[params.nMaxRCopierEvents]; // TODO FIXME
         int nrEvents = io_getevents(ctx, 0, params.nMaxRCopierEvents, events, NULL);
         if (isVerbose) {
             cout << "[RecursiveCopier::handleCallback] nrEvents=" << nrEvents << endl;
@@ -245,6 +243,7 @@ private:
             callback(ctx, events[eventIdx].obj, events[eventIdx].res, events[eventIdx].res2);
         }
     }
+
 };
 
 }

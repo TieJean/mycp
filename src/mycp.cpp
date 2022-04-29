@@ -17,7 +17,6 @@ void shutdown() {
 
 unordered_map<iocb*, Copier*> Copier::iocbs2Copiers;
 void Copier::readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2) {
-    cout << "[Copier::readCallback]" << endl;
     if (res2 != 0) { LOG(ERROR) << "error in readCallback"; }
     if (res != iocbPtr->u.c.nbytes) {
         LOG(ERROR) << "Requested read size doesn't match with responded read size\n" 
@@ -26,13 +25,14 @@ void Copier::readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long
     int fd = iocbs2Copiers[iocbPtr]->fdDst;
     io_prep_pwrite(iocbPtr, fd, iocbPtr->u.c.buf, iocbPtr->u.c.nbytes, iocbPtr->u.c.offset);
     io_set_callback(iocbPtr, Copier::writeCallback);
-    if (io_submit(ctx, 1, &iocbPtr) != 1) {
-        LOG(FATAL) << "io_submit failed in readCallback";
+    int nr = io_submit(ctx, 1, &iocbPtr);
+    if ( nr != 1) {
+        LOG(FATAL) << "io_submit failed in readCallback\n" 
+                   << "Requsted: 1; Responded: " << nr;
     }
 }
 
 void Copier::writeCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2) {
-    cout << "[Copier::writeCallback]" << endl;
     if (res2 != 0) { LOG(ERROR) << "error in writeCallback"; }
     if (res != iocbPtr->u.c.nbytes) {
         LOG(ERROR) << "Requested write size doesn't match with responded write size\n" 
