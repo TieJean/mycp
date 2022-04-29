@@ -24,7 +24,9 @@ namespace fs = boost::filesystem;
 namespace mycp {
 
 struct AIOParam {
-    uint8_t nTotalEvents;
+    uint8_t nMaxCopierEvents;
+    uint8_t nMaxRCopierEvents;
+    struct timespec timeout;
 };
 
 extern io_context_t ctx;
@@ -35,32 +37,8 @@ class Copier {
 
 static unordered_map<iocb*, Copier*> iocbs2Copiers;
 
-static void readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2) {
-    if (res2 != 0) { LOG(ERROR) << "error in readCallback"; }
-    if (res != iocbPtr->u.c.nbytes) {
-        LOG(ERROR) << "Requested read size doesn't match with responded read size\n" 
-                   << "Requested: " << iocbPtr->u.c.nbytes << "; Responded: " << res;
-    }
-    int fd = iocbs2Copiers[iocbPtr]->fdDst;
-    io_prep_pwrite(iocbPtr, fd, iocbPtr->u.c.buf, iocbPtr->u.c.nbytes, iocbPtr->u.c.offset);
-    io_set_callback(iocbPtr, Copier::writeCallback);
-    if (io_submit(ctx, 1, &iocbPtr) != 1) {
-        LOG(FATAL) << "io_submit failed in readCallback";
-    }
-}
-
-static void writeCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2) {
-    if (res2 != 0) { LOG(ERROR) << "error in writeCallback"; }
-    if (res != iocbPtr->u.c.nbytes) {
-        LOG(ERROR) << "Requested write size doesn't match with responded write size\n" 
-                   << "Requested: " << iocbPtr->u.c.nbytes << "; Responded: " << res;
-    }
-    iocbs2Copiers[iocbPtr]->iocbFreeList.emplace_back(iocbPtr);
-
-    if (iocbs2Copiers[iocbPtr]->offset < iocbs2Copiers[iocbPtr]->filesize) {
-        iocbs2Copiers[iocbPtr]->copy();
-    }
-}
+static void readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2);
+static void writeCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2);
 
 public:
     int fdSrc;
@@ -71,7 +49,7 @@ public:
     vector<iocb*> iocbFreeList;
     vector<iocb*> iocbBusyList;
     off_t offset;
-    bool isVerbose;
+    bool isVerbose = true;
 
     Copier() {}
     Copier(const string& pathSrc, const string& pathDst, const AIOParam& params) {
@@ -90,10 +68,10 @@ public:
         this->filesize = stat.st_size;
         this->blksize  = stat.st_blksize;
         this->params = params;
-        iocbFreeList.reserve(params.nTotalEvents);
-        iocbBusyList.reserve(params.nTotalEvents);
+        iocbFreeList.reserve(params.nMaxCopierEvents);
+        iocbBusyList.reserve(params.nMaxCopierEvents);
 
-        for (size_t i = 0; i < params.nTotalEvents; ++i) {
+        for (size_t i = 0; i < params.nMaxCopierEvents; ++i) {
             iocb* iocbPtr  = new iocb();
             Copier* cpPtr  = new Copier();
             iocbPtr->u.c.buf = new char[this->blksize];
@@ -130,17 +108,18 @@ public:
             iocbPtr->u.c.nbytes = rwSize;
             iocbPtr->u.c.offset = offset;
             io_prep_pread(iocbPtr, this->fdSrc, iocbPtr->u.c.buf, rwSize, offset);
-            io_set_callback(iocbPtr, readCallback);
+            io_set_callback(iocbPtr, Copier::readCallback);
             iocbBusyList.emplace_back(iocbPtr);
             this->offset += rwSize;
         }
 
-        if (iocbFreeList.size() == this->params.nTotalEvents || this->offset >= this->filesize) {
+        if (iocbFreeList.size() == this->params.nMaxCopierEvents || this->offset >= this->filesize) {
             int nr = io_submit(ctx, this->iocbBusyList.size(), this->iocbBusyList.data());
             if (nr != this->iocbBusyList.size()) {
                 LOG(INFO) << "Requested event nr doesn't match responded event nr\n"
                           << "Requested: " << this->iocbBusyList.size() << "Responded: " << nr;
             }
+            cout << "[Copier::copy] nr=" << nr << endl;
             this->iocbBusyList.erase(this->iocbBusyList.begin(), this->iocbBusyList.begin() + nr);
         }
     }
@@ -153,16 +132,18 @@ class RecursiveCopier {
 public:
     string srcDir;
     string dstDir;
-    bool isVerbose = false;
+    AIOParam params;
+    bool isVerbose = true;
 
     RecursiveCopier() {
         LOG(INFO) << "use default RecursiveCopier constructor is dangerous!\n"
                   << "pls use RecursiveCopier(const string& srcDir, const string& dstDir) instead";
     }
 
-    RecursiveCopier(const string& srcDir, const string& dstDir) {
+    RecursiveCopier(const string& srcDir, const string& dstDir, const AIOParam& params) {
         this->srcDir = srcDir;
         this->dstDir = dstDir;
+        this->params = params;
         struct stat srcStat, dstStat;
         // check if directory reference: https://stackoverflow.com/questions/4553012/checking-if-a-file-is-a-directory-or-just-a-file
         if (stat(this->srcDir.c_str(), &srcStat)) {
@@ -232,13 +213,13 @@ private:
             close(fdSrc);
             close(fdDst);
         } else {
-            AIOParam params;
-            params.nTotalEvents = 8;
             string srcPathStr = srcPath.string();
             string dstPathStr = dstPath.string();
-            Copier copier(srcPathStr, dstPathStr, params);
+            Copier copier(srcPathStr, dstPathStr, this->params);
+            copier.blksize = 1024;
             copier.copy();
         }
+        handleCallback();
     }
 
     void handleDir(const fs::path& srcPath, const fs::path& dstPath) {
@@ -250,6 +231,18 @@ private:
         } else if (S_ISREG(dstStat.st_mode)) {
             LOG(FATAL) << "[RecursiveCopier::handleDir] we have naming conflicts in dstDir... "
                        << "expected empty or some directory, but got a file";
+        }
+    }
+
+    void handleCallback() {
+        static io_event events[64]; // TODO FIXME
+        int nrEvents = io_getevents(ctx, 0, params.nMaxRCopierEvents, events, NULL);
+        if (isVerbose) {
+            cout << "[RecursiveCopier::handleCallback] nrEvents=" << nrEvents << endl;
+        }
+        for (size_t eventIdx = 0; eventIdx < nrEvents; eventIdx++) {
+            io_callback_t callback = (io_callback_t)events[eventIdx].data; 
+            callback(ctx, events[eventIdx].obj, events[eventIdx].res, events[eventIdx].res2);
         }
     }
 };

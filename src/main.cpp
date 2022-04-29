@@ -18,7 +18,14 @@ int main(int argc, char **argv) {
 
     mycp::init(16);
 
-    RecursiveCopier rCopier(FLAGS_src, FLAGS_dst);
+    AIOParam params;
+    params.nMaxCopierEvents  = 4;
+    params.nMaxRCopierEvents = 32;
+    struct timespec timeout;
+    timeout.tv_sec = 1;
+    timeout.tv_nsec = 0;
+    params.timeout = timeout;
+    RecursiveCopier rCopier(FLAGS_src, FLAGS_dst, params);
     rCopier.recursiveCopy();
 
     mycp::shutdown();
