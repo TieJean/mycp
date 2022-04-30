@@ -187,7 +187,7 @@ private:
         // small files: if the file is less than one blksize (inclusive)
         // reference: https://stackoverflow.com/questions/10543230/fastest-way-to-copy-data-from-one-file-to-another-in-c-c
         // if (srcStat.st_size <= srcStat.st_blksize) {
-        if (srcStat.st_size <= 1024) {
+        if (srcStat.st_size <= 1024) { // TODO FIXME
             int fdSrc, fdDst;
             fdSrc = open(srcPath.c_str(), O_RDONLY); // don't need to check this open
             if (access(dstPath.c_str(), F_OK)) {
@@ -214,7 +214,7 @@ private:
             string srcPathStr = srcPath.string();
             string dstPathStr = dstPath.string();
             Copier copier(srcPathStr, dstPathStr, this->params);
-            copier.blksize = 1024;
+            copier.blksize = 1024; // TODO FIXME
             copier.copy();
             handleCallback();
         }

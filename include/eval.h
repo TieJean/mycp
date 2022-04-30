@@ -17,15 +17,25 @@ public:
     uint64_t MB = (1 << 20); // 1 MB
     uint64_t GB = (1 << 30); // 1 GB
     string dataDir;
+    uint64_t cacheSize;
     bool isVerbose = false;
 
     Evaluator() {}
     Evaluator(const string& dataDir) : dataDir(dataDir) {
-        cout << "KB: " << KB << endl;
-        cout << "MB: " << MB << endl;
-        cout << "GB: " << GB << endl;
+        this->cacheSize = sysconf(_SC_LEVEL2_CACHE_SIZE);
+        cout << "cache size: " << this->cacheSize  << endl;
     }
     ~Evaluator() {}
+
+    void flushL1DCache();
+
+    void CreateBTreeSmallFiles();
+    void CreateBTreeLargeFiles();
+    void CreateDTreeSmallFiles();
+    void CreateDTreeLargeFiles();
+    void CreateBTreeHybrid();
+    void CreateDTreeHybrid();
+    void CreateDirectoryOnly();
 
 private:
     void createFilesAndDirs(const string& pathStr, const unordered_map<string, uint64_t>& fileStrToSizeList, const vector<string>& dirStrList) {
@@ -40,23 +50,18 @@ private:
 
     void createFileBySize(const string& pathStr, const uint64_t filesize) {
         struct stat pathStat;
-        if (stat(pathStr.c_str(), &pathStat)) {
+        if (stat(pathStr.c_str(), &pathStat) == 0) {
             if (S_ISDIR(pathStat.st_mode)) {
-                LOG(ERROR) << "[Evaluator::createFileBySize] You cannot override a directory by a file!";
+                LOG(FATAL) << "[Evaluator::createFileBySize] You cannot override a directory by a file!";
             } else {
                 if (!S_ISREG(pathStat.st_mode)) {
-                    LOG(ERROR) << "[Evaluator::createFileBySize] Undefined code path!";
+                    LOG(FATAL) << "[Evaluator::createFileBySize] Undefined code path!";
                 }
-                std::fstream ofile;
-                ofile.open(pathStr, std::ios::trunc);
-                if (!ofile.is_open()) {
-                    LOG(ERROR) << "[Evaluator::truncateFile] Failed to open/create file: " << pathStr;
-                }
-                ofile.close();
+                fs::resize_file(fs::path(pathStr), 0);
                 // reference: https://stackoverflow.com/questions/7775027/how-to-create-file-of-x-size
                 FILE *fp = fopen(pathStr.c_str(), "w");
                 if (fp == NULL) {
-                    LOG(ERROR) << "[Evaluator::createFileBySize] Failed to open file: " << pathStr;
+                    LOG(FATAL) << "[Evaluator::createFileBySize] Failed to open file: " << pathStr;
                 }
                 fseek(fp, filesize-1 , SEEK_SET);
                 fputc('\0', fp);
@@ -65,7 +70,8 @@ private:
         } else {
             FILE *fp = fopen(pathStr.c_str(), "w");
             if (fp == NULL) {
-                LOG(ERROR) << "[Evaluator::createFileBySize] Failed to open file: " << pathStr;
+                cout << "pathStr: " << pathStr << endl;
+                LOG(FATAL) << "[Evaluator::createFileBySize] Failed to open file: " << pathStr;
             }
             fseek(fp, filesize-1 , SEEK_SET);
             fputc('\0', fp);
@@ -76,18 +82,18 @@ private:
     void createDirectory(const string& pathStr) {
         fs::path path(pathStr);
         struct stat pathStat;
-        if (stat(pathStr.c_str(), &pathStat)) {
+        if (!stat(pathStr.c_str(), &pathStat)) {
             if (S_ISREG(pathStat.st_mode)) {
-                LOG(ERROR) << "[Evaluator::createDirectory] You cannot override a file by a directory!";
+                LOG(FATAL) << "[Evaluator::createDirectory] You cannot override a file by a directory!";
             } else {
                 if (!S_ISDIR(pathStat.st_mode)) {
-                    LOG(ERROR) << "[Evaluator::createDirectory] Undefined code path!";
+                    LOG(FATAL) << "[Evaluator::createDirectory] Undefined code path!";
                 }
-                return;
             }
-        }
-        if (!fs::create_directory(path)) {
-            LOG(ERROR) << "[Evaluator::createDirectory] Failed to create directory: " << pathStr;
+        } else {
+            if (!fs::create_directory(path)) {
+                LOG(FATAL) << "[Evaluator::createDirectory] Failed to create directory: " << pathStr;
+            }
         }
     }
 

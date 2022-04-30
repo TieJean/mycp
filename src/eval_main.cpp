@@ -12,4 +12,6 @@ int main(int argc, char **argv) {
     google::ParseCommandLineFlags(&argc, &argv, true);
 
     Evaluator eval(FLAGS_data_dir);
+    eval.isVerbose = true;
+    eval.CreateBTreeSmallFiles();
 }
