@@ -17,7 +17,10 @@ set(LIBS stdc++fs
     aio
     ${Boost_LIBRARIES})
 
-add_library(mycp src/mycp.cpp)
+add_library(mycp src/mycp.cpp src/eval.cpp)
 
 add_executable(main src/main.cpp)
 target_link_libraries(main mycp ${LIBS})
+
+add_executable(eval_main src/eval_main.cpp)
+target_link_libraries(eval_main mycp ${LIBS})
