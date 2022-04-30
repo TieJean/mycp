@@ -13,5 +13,7 @@ int main(int argc, char **argv) {
 
     Evaluator eval(FLAGS_data_dir);
     eval.isVerbose = true;
-    eval.CreateBTreeSmallFiles();
+    eval.CreateDebug();
+    // eval.CreateBTreeSmallFiles();
+    // eval.CreateBTreeLargeFiles();
 }

@@ -1,4 +1,5 @@
 #include <glog/logging.h>
+#include <errno.h>
 #include "mycp.h"
 
 // reference: https://github.com/littledan/linux-aio
@@ -11,6 +12,11 @@ void init(const unsigned nEvents) {
         LOG(FATAL) << "io_setup failed";
     }
 }
+
+void wait() {
+
+}
+
 void shutdown() {
     io_destroy(ctx);
 }
@@ -23,6 +29,8 @@ void Copier::readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long
                    << "Requested: " << iocbPtr->u.c.nbytes << "; Responded: " << res;
     }
     int fd = iocbs2Copiers[iocbPtr]->fdDst;
+    cout << "[readCallback] fd=" << fd << endl;
+    cout << "[readCallback] iocb offset=" << iocbPtr->u.c.offset << endl;
     io_prep_pwrite(iocbPtr, fd, iocbPtr->u.c.buf, iocbPtr->u.c.nbytes, iocbPtr->u.c.offset);
     io_set_callback(iocbPtr, Copier::writeCallback);
     int nr = io_submit(ctx, 1, &iocbPtr);
@@ -33,6 +41,7 @@ void Copier::readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long
 }
 
 void Copier::writeCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2) {
+    cout << "[writeCallback] start" << endl;
     if (res2 != 0) { LOG(ERROR) << "error in writeCallback"; }
     if (res != iocbPtr->u.c.nbytes) {
         LOG(ERROR) << "Requested write size doesn't match with responded write size\n" 
@@ -43,5 +52,7 @@ void Copier::writeCallback(io_context_t ctx, struct iocb *iocbPtr, long res, lon
     if (iocbs2Copiers[iocbPtr]->offset < iocbs2Copiers[iocbPtr]->filesize) {
         iocbs2Copiers[iocbPtr]->copy();
     }
+    cout << "[writeCallback] end" << endl;
+
 }
 }

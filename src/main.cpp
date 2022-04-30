@@ -16,7 +16,7 @@ int main(int argc, char **argv) {
         LOG(FATAL) << "missing src or dest";
     }
 
-    mycp::init(16);
+    mycp::init(32);
 
     AIOParam params;
     params.nMaxCopierEvents  = 4;

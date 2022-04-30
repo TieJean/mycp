@@ -24,3 +24,6 @@ target_link_libraries(main mycp ${LIBS})
 
 add_executable(eval_main src/eval_main.cpp)
 target_link_libraries(eval_main mycp ${LIBS})
+
+add_executable(flush_main src/flush_main.cpp)
+target_link_libraries(flush_main mycp ${LIBS})

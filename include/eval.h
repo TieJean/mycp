@@ -20,7 +20,9 @@ public:
     uint64_t cacheSize;
     bool isVerbose = false;
 
-    Evaluator() {}
+    Evaluator() {
+        this->cacheSize = sysconf(_SC_LEVEL2_CACHE_SIZE);
+    }
     Evaluator(const string& dataDir) : dataDir(dataDir) {
         this->cacheSize = sysconf(_SC_LEVEL2_CACHE_SIZE);
         cout << "cache size: " << this->cacheSize  << endl;
@@ -29,6 +31,7 @@ public:
 
     void flushL1DCache();
 
+    void CreateDebug();
     void CreateBTreeSmallFiles();
     void CreateBTreeLargeFiles();
     void CreateDTreeSmallFiles();
@@ -38,6 +41,16 @@ public:
     void CreateDirectoryOnly();
 
 private:
+    std::tuple<string, string> createTestRoot(const string& testName) {
+        string testDir = dataDir + testName + "/";
+        createDirectory(testDir);
+        string testSrcDir = testDir + "src/";
+        createDirectory(testSrcDir);
+        string testDstDir = testDir + "dst/";
+        createDirectory(testDstDir);
+        return std::make_tuple(testSrcDir, testDstDir);
+    }
+
     void createFilesAndDirs(const string& pathStr, const unordered_map<string, uint64_t>& fileStrToSizeList, const vector<string>& dirStrList) {
         struct stat pathStat;
         for (const auto& fileStrToSize : fileStrToSizeList) {

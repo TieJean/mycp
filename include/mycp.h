@@ -24,13 +24,14 @@ namespace fs = boost::filesystem;
 namespace mycp {
 
 struct AIOParam {
-    uint8_t nMaxCopierEvents;
-    uint8_t nMaxRCopierEvents;
+    size_t nMaxCopierEvents;
+    size_t nMaxRCopierEvents;
     struct timespec timeout;
 };
 
 extern io_context_t ctx;
 void init(const unsigned nEvents);
+void wait();
 void shutdown();
 
 class Copier {
@@ -57,7 +58,7 @@ public:
         if (this->fdSrc < 0) {
             LOG(FATAL) << "failed to open source file: " << pathSrc;
         }
-        this->fdDst = open(pathDst.c_str(), O_WRONLY | O_TRUNC | O_CREAT);
+        this->fdDst = open(pathDst.c_str(), O_WRONLY | O_TRUNC | O_CREAT, S_IRWXU);
         if (this->fdDst < 0) {
             LOG(FATAL) << "failed to open destination file: " << pathDst;
         }
@@ -77,7 +78,7 @@ public:
             iocbFreeList.emplace_back(iocbPtr);
             Copier::iocbs2Copiers[iocbPtr] = this;
         }
-
+        this->offset = 0;
     }
 
     ~Copier() {
@@ -88,7 +89,8 @@ public:
         }
         // this shouldn't happen
         for (iocb* iocbPtr : iocbBusyList) {
-            LOG(INFO) << "For some reason, your iocbBusyList is not empty when deconstructor is called...";
+            cout << "For some reason, your iocbBusyList is not empty when deconstructor is called..."
+                 << "iocbFreeList size: " << iocbFreeList.size() << "; iocbBusyList size: " << iocbBusyList.size() << endl;
             iocbs2Copiers.erase(iocbPtr);
             if (iocbPtr->u.c.buf != nullptr) { delete[] (char*) iocbPtr->u.c.buf; }
             if (iocbPtr != nullptr) { delete iocbPtr; }
@@ -99,24 +101,27 @@ public:
     }
 
     void copy() {
+        cout << "start copy: offset=" << offset << "; filesize=" << filesize << endl;
         while (!iocbFreeList.empty() && this->offset < this->filesize) {
             size_t rwSize = this->filesize - this->offset < this->blksize ? 
                             this->filesize - this->offset : this->blksize;
             iocb* iocbPtr = iocbFreeList[iocbFreeList.size()-1];
             iocbFreeList.pop_back();
             iocbPtr->u.c.nbytes = rwSize;
-            iocbPtr->u.c.offset = offset;
+            // iocbPtr->u.c.offset = offset;
+            iocbPtr->u.c.offset = 0;
             io_prep_pread(iocbPtr, this->fdSrc, iocbPtr->u.c.buf, rwSize, offset);
             io_set_callback(iocbPtr, Copier::readCallback);
             iocbBusyList.emplace_back(iocbPtr);
             this->offset += rwSize;
         }
 
+        cout << "iocbFreeList size: " << iocbFreeList.size() << "; iocbBusyList size: " << iocbBusyList.size() << endl;
         if (iocbBusyList.size() == this->params.nMaxCopierEvents || this->offset >= this->filesize) {
             int nr = io_submit(ctx, this->iocbBusyList.size(), this->iocbBusyList.data());
             if (nr != this->iocbBusyList.size()) {
-                LOG(INFO) << "Requested event nr doesn't match responded event nr\n"
-                          << "Requested: " << this->iocbBusyList.size() << "Responded: " << nr;
+                cout << "Requested event nr doesn't match responded event nr\n"
+                     << "Requested: " << this->iocbBusyList.size() << "Responded: " << nr << endl;;
             }
             this->iocbBusyList.erase(this->iocbBusyList.begin(), this->iocbBusyList.begin() + nr);
         }
@@ -162,11 +167,11 @@ public:
     ~RecursiveCopier() {}
 
     void recursiveCopy() {
-        for (const fs::directory_entry& entry : fs::directory_iterator(this->srcDir)) {
+        for (const fs::directory_entry& entry : fs::recursive_directory_iterator(this->srcDir)) {
             const fs::path& currSrcPath = entry.path();
             const fs::path& currDstPath = this->dstDir / fs::relative(currSrcPath, this->srcDir);
             struct stat srcStat, dstStat;
-            if (stat(currSrcPath.c_str(), &srcStat)) {
+            if (stat(currSrcPath.c_str(), &srcStat) != 0) {
                 LOG(FATAL) << "[RecursiveCopier::recursiveCopy] cannot open src dir: " << this->srcDir;
             }
             if (S_ISREG(srcStat.st_mode)) {
@@ -176,7 +181,9 @@ public:
             } else {
                 LOG(FATAL) << "[RecursiveCopier::recursiveCopy] undefined code path!";
             }
+            handleCallback();
         }
+        handleCallback();
     }
 
 private:
@@ -187,7 +194,7 @@ private:
         // small files: if the file is less than one blksize (inclusive)
         // reference: https://stackoverflow.com/questions/10543230/fastest-way-to-copy-data-from-one-file-to-another-in-c-c
         // if (srcStat.st_size <= srcStat.st_blksize) {
-        if (srcStat.st_size <= 1024) { // TODO FIXME
+        if (srcStat.st_size <= 4096) { // TODO FIXME
             int fdSrc, fdDst;
             fdSrc = open(srcPath.c_str(), O_RDONLY); // don't need to check this open
             if (access(dstPath.c_str(), F_OK)) {
@@ -214,15 +221,14 @@ private:
             string srcPathStr = srcPath.string();
             string dstPathStr = dstPath.string();
             Copier copier(srcPathStr, dstPathStr, this->params);
-            copier.blksize = 1024; // TODO FIXME
+            copier.blksize = 4096; // TODO FIXME
             copier.copy();
-            handleCallback();
         }
     }
 
     void handleDir(const fs::path& srcPath, const fs::path& dstPath) {
         struct stat srcStat, dstStat;
-        if (stat(dstPath.c_str(), &dstStat)) {
+        if (stat(dstPath.c_str(), &dstStat) != 0) {
             if (!fs::create_directory(dstPath)) {
                 LOG(FATAL) << "[RecursiveCopier::handleDir] failed creating the dst dir: " << dstPath; 
             }
