@@ -30,7 +30,10 @@ void Copier::readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long
     }
     int fd = iocbs2Copiers[iocbPtr]->fdDst;
     cout << "[readCallback] fd=" << fd << endl;
-    cout << "[readCallback] iocb offset=" << iocbPtr->u.c.offset << endl;
+    cout << "[readCallback] iocb offset=" << iocbPtr->u.c.offset 
+         << ", nbytes=" << iocbPtr->u.c.nbytes << endl;
+    cout << "[readCallback] iocbPtr->u.c.buf: " << iocbPtr->u.c.buf << endl;
+    cout << "[readCallback] *iocbPtr->u.c.buf: " << *((size_t*)iocbPtr->u.c.buf) << endl;
     io_prep_pwrite(iocbPtr, fd, iocbPtr->u.c.buf, iocbPtr->u.c.nbytes, iocbPtr->u.c.offset);
     io_set_callback(iocbPtr, Copier::writeCallback);
     int nr = io_submit(ctx, 1, &iocbPtr);

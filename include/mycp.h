@@ -75,6 +75,7 @@ public:
         for (size_t i = 0; i < params.nMaxCopierEvents; ++i) {
             iocb* iocbPtr  = new iocb();
             iocbPtr->u.c.buf = new char[this->blksize];
+            *((size_t*)iocbPtr->u.c.buf) = i; // TODO Delete me
             iocbFreeList.emplace_back(iocbPtr);
             Copier::iocbs2Copiers[iocbPtr] = this;
         }
