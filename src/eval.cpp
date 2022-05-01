@@ -21,6 +21,41 @@ void Evaluator::CreateDebug() {
     createFileBySize(testSrcDir + "test.txt", 8 * KB);
 }
 
+void Evaluator::CreateBTreeHybrid() {
+    auto testDirs = createTestRoot("BTreeHybridTest");
+    string testSrcDir  = std::get<0>(testDirs);
+    string testDstcDir = std::get<1>(testDirs);
+
+    size_t nFile = 10;
+    size_t nLargeFile = 5;
+    size_t nDirLayer1  = 10;
+    unordered_map<string, uint64_t> fileStrToSizeList;
+    vector<string> dirStrLayer1List;
+    // layer1
+    for (size_t fileIdx = 0; fileIdx < nFile; ++fileIdx) {
+        fileStrToSizeList[std::to_string(fileIdx) + ".txt"] = 8 * KB;
+    }
+    for (size_t fileIdx = nFile; fileIdx < nFile + nLargeFile; ++fileIdx) {
+        fileStrToSizeList[std::to_string(fileIdx) + ".txt"] = MB;
+    }
+    for (size_t dirIdx = 0; dirIdx < nDirLayer1; ++dirIdx) {
+        dirStrLayer1List.push_back(std::to_string(dirIdx));
+    }
+    createFilesAndDirs(testSrcDir, fileStrToSizeList, dirStrLayer1List);
+
+    // layer2
+    dirStrLayer1List.clear();
+    for (size_t dirIdx = 0; dirIdx < nDirLayer1; ++dirIdx) {
+        string currTestRelDir = std::to_string(dirIdx) + "/";
+        fileStrToSizeList.clear();
+        for (size_t fileIdx = 0; fileIdx < nFile; ++fileIdx) {
+            string currTestRelPath = currTestRelDir + std::to_string(fileIdx) + ".txt";
+            fileStrToSizeList[currTestRelPath] = KB;
+        }
+        createFilesAndDirs(testSrcDir, fileStrToSizeList, dirStrLayer1List);
+    }
+}
+
 void Evaluator::CreateBTreeSmallFiles() {
     // root
     auto testDirs = createTestRoot("BTreeSmallFilesTest");
@@ -123,9 +158,6 @@ void Evaluator::CreateDTreeSmallFiles() {
 
 }
 void Evaluator::CreateDTreeLargeFiles() {
-
-}
-void Evaluator::CreateBTreeHybrid() {
 
 }
 void Evaluator::CreateDTreeHybrid() {
