@@ -105,18 +105,18 @@ public:
             }
         }
         // this shouldn't happen
-        // for (iocb* iocbPtr : iocbBusyList) {
-        //     LOG(INFO) << "For some reason, your iocbBusyList is not empty when deconstructor is called...";
-        //     iocbs2Copiers.erase(iocbPtr);
-        //     if (iocbPtr->u.c.buf != nullptr) { 
-        //         delete[] (char*) iocbPtr->u.c.buf; 
-        //         iocbPtr->u.c.buf = nullptr;
-        //     }
-        //     if (iocbPtr != nullptr) { 
-        //         delete iocbPtr; 
-        //         iocbPtr = nullptr;
-        //     }
-        // }
+        for (iocb* iocbPtr : iocbBusyList) {
+            LOG(INFO) << "For some reason, your iocbBusyList is not empty when deconstructor is called...";
+            iocbs2Copiers.erase(iocbPtr);
+            if (iocbPtr->u.c.buf != nullptr) { 
+                delete[] (char*) iocbPtr->u.c.buf; 
+                iocbPtr->u.c.buf = nullptr;
+            }
+            if (iocbPtr != nullptr) { 
+                delete iocbPtr; 
+                iocbPtr = nullptr;
+            }
+        }
 
         close(this->fdSrc);
         close(this->fdDst); 

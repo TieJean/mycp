@@ -1,4 +1,5 @@
 #include <glog/logging.h>
+#include <error.h>
 #include "mycp.h"
 
 // reference: https://github.com/littledan/linux-aio
@@ -26,12 +27,20 @@ void Copier::readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long
         return;
     }
     int fd = iocbs2Copiers[iocbPtr]->fdDst;
+    if (fcntl(fd, F_GETFD) == -1) {
+        // iocbs2Copiers[iocbPtr]->iocbFreeList.emplace_back(iocbPtr);
+        // if (iocbs2Copiers[iocbPtr]->offset < iocbs2Copiers[iocbPtr]->filesize) {
+        //     iocbs2Copiers[iocbPtr]->copy();
+        // }
+        return;
+    }
     io_prep_pwrite(iocbPtr, fd, iocbPtr->u.c.buf, iocbPtr->u.c.nbytes, iocbPtr->u.c.offset);
     io_set_callback(iocbPtr, Copier::writeCallback);
     int nr = io_submit(ctx, 1, &iocbPtr);
     if ( nr != 1 ) {
-        // LOG(FATAL) << "io_submit failed in readCallback\n" 
-        //            << "Requsted: 1; Responded: " << nr;
+        cout << "fd=" << fd << ", aio_fildes=" << iocbPtr->aio_fildes << ", aio_lio_opcode=" << iocbPtr->aio_lio_opcode << endl;
+        LOG(FATAL) << "io_submit failed in readCallback\n" 
+                   << "Requsted: 1; Responded: " << nr;
     }
 }
 
