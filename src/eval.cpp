@@ -53,15 +53,15 @@ void Evaluator::CreateBTreeSmallFiles() {
     }
 }
 
-void Evaluator::CreateBTreeLargeFiles() {
+void Evaluator::CreateBTreeMediumFiles() {
     // root
-    auto testDirs = createTestRoot("BTreeLargeFilesTest");
+    auto testDirs = createTestRoot("BTreeMediumFilesTest");
     string testSrcDir  = std::get<0>(testDirs);
     string testDstcDir = std::get<1>(testDirs);
 
     size_t nFileLayer1 = 5;
     size_t nFileLayer2 = 10;
-    size_t nDirLayer1  = 10;
+    size_t nDirLayer1  = 5;
     unordered_map<string, uint64_t> fileStrToSizeList;
     vector<string> dirStrLayer1List;
     // layer1
@@ -81,6 +81,39 @@ void Evaluator::CreateBTreeLargeFiles() {
         for (size_t fileIdx = 0; fileIdx < nFileLayer2; ++fileIdx) {
             string currTestRelPath = currTestRelDir + std::to_string(fileIdx) + ".txt";
             fileStrToSizeList[currTestRelPath] = MB;
+        }
+        createFilesAndDirs(testSrcDir, fileStrToSizeList, dirStrLayer1List);
+    }
+}
+
+void Evaluator::CreateBTreeLargeFiles() {
+    // root
+    auto testDirs = createTestRoot("BTreeLargeFilesTest");
+    string testSrcDir  = std::get<0>(testDirs);
+    string testDstcDir = std::get<1>(testDirs);
+
+    size_t nFileLayer1 = 5;
+    size_t nFileLayer2 = 10;
+    size_t nDirLayer1  = 5;
+    unordered_map<string, uint64_t> fileStrToSizeList;
+    vector<string> dirStrLayer1List;
+    // layer1
+    for (size_t fileIdx = 0; fileIdx < nFileLayer1; ++fileIdx) {
+        fileStrToSizeList[std::to_string(fileIdx) + ".txt"] = GB;
+    }
+    for (size_t dirIdx = 0; dirIdx < nDirLayer1; ++dirIdx) {
+        dirStrLayer1List.push_back(std::to_string(dirIdx));
+    }
+    createFilesAndDirs(testSrcDir, fileStrToSizeList, dirStrLayer1List);
+
+    // layer2
+    dirStrLayer1List.clear();
+    for (size_t dirIdx = 0; dirIdx < nDirLayer1; ++dirIdx) {
+        string currTestRelDir = std::to_string(dirIdx) + "/";
+        fileStrToSizeList.clear();
+        for (size_t fileIdx = 0; fileIdx < nFileLayer2; ++fileIdx) {
+            string currTestRelPath = currTestRelDir + std::to_string(fileIdx) + ".txt";
+            fileStrToSizeList[currTestRelPath] = 10 * MB;
         }
         createFilesAndDirs(testSrcDir, fileStrToSizeList, dirStrLayer1List);
     }

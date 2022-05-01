@@ -33,6 +33,7 @@ public:
 
     void CreateDebug();
     void CreateBTreeSmallFiles();
+    void CreateBTreeMediumFiles();
     void CreateBTreeLargeFiles();
     void CreateDTreeSmallFiles();
     void CreateDTreeLargeFiles();

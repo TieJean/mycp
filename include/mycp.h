@@ -50,7 +50,7 @@ public:
     vector<iocb*> iocbFreeList;
     vector<iocb*> iocbBusyList;
     off_t offset;
-    bool isVerbose = false;
+    bool isVerbose = true;
 
     Copier() {}
     Copier(const string& pathSrc, const string& pathDst, const AIOParam& params) {
@@ -74,8 +74,12 @@ public:
 
         for (size_t i = 0; i < params.nMaxCopierEvents; ++i) {
             iocb* iocbPtr  = new iocb();
-            iocbPtr->u.c.buf = new char[this->blksize];
-            *((size_t*)iocbPtr->u.c.buf) = i; // TODO Delete me
+            // iocbPtr->u.c.buf = new char[this->blksize];
+            iocbPtr->u.c.buf = new char[64 * 1024]; // TODO FIXME
+            if (isVerbose) {
+                cout << "[Copier]iocbPtr: " << iocbPtr << endl;
+                cout << "[Copier] iocbPtr->u.c.buf: " << iocbPtr->u.c.buf << endl;
+            }
             iocbFreeList.emplace_back(iocbPtr);
             Copier::iocbs2Copiers[iocbPtr] = this;
         }
@@ -108,7 +112,7 @@ public:
                             this->filesize - this->offset : this->blksize;
             iocb* iocbPtr = iocbFreeList[iocbFreeList.size()-1];
             iocbFreeList.pop_back();
-            iocbPtr->u.c.nbytes = rwSize;
+            // iocbPtr->u.c.nbytes = rwSize;
             // iocbPtr->u.c.offset = offset;
             iocbPtr->u.c.offset = 0;
             io_prep_pread(iocbPtr, this->fdSrc, iocbPtr->u.c.buf, rwSize, offset);
@@ -137,7 +141,7 @@ public:
     string srcDir;
     string dstDir;
     AIOParam params;
-    bool isVerbose = false;
+    bool isVerbose = true;
 
     RecursiveCopier() {
         LOG(INFO) << "use default RecursiveCopier constructor is dangerous!\n"
@@ -222,7 +226,6 @@ private:
             string srcPathStr = srcPath.string();
             string dstPathStr = dstPath.string();
             Copier copier(srcPathStr, dstPathStr, this->params);
-            copier.blksize = 4096; // TODO FIXME
             copier.copy();
         }
     }
