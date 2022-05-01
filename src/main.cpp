@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
     params.timeout = timeout;
     RecursiveCopier rCopier(FLAGS_src, FLAGS_dst, params);
     // rCopier.recursiveCopy();
-    rCopier.recursiveCopyMulti();
+    rCopier.recursiveCopyMultiThread();
 
     mycp::shutdown();
 

@@ -22,13 +22,14 @@ using std::unordered_set;
 using std::string;
 using std::cout;
 using std::endl;
+using std::thread;
 namespace fs = boost::filesystem;
 
 namespace mycp {
 
 struct AIOParam {
-    uint32_t nMaxCopierEvents;
-    uint32_t nMaxRCopierEvents;
+    size_t nMaxCopierEvents;
+    size_t nMaxRCopierEvents;
     struct timespec timeout;
 };
 
@@ -60,7 +61,7 @@ public:
         if (this->fdSrc < 0) {
             LOG(FATAL) << "failed to open source file: " << pathSrc;
         }
-        this->fdDst = open(pathDst.c_str(), O_WRONLY | O_TRUNC | O_CREAT);
+        this->fdDst = open(pathDst.c_str(), O_WRONLY | O_TRUNC | O_CREAT, S_IRWXU);
         if (this->fdDst < 0) {
             LOG(FATAL) << "failed to open destination file: " << pathDst;
         }
@@ -176,38 +177,6 @@ public:
 
     ~RecursiveCopier() {}
 
-    void recursiveCopyMulti() {
-        for (const fs::directory_entry& entry : fs::directory_iterator(this->srcDir)) {
-            const fs::path& currSrcPath = entry.path();
-            if (fs::is_directory(currSrcPath)) {
-                recursiveCopySingle(currSrcPath.string());
-            } else {
-                const fs::path& currDstPath = this->dstDir / fs::relative(currSrcPath, this->srcDir);
-                struct stat srcStat;
-                stat(currSrcPath.c_str(), &srcStat);
-                handleFile(currSrcPath, currDstPath, srcStat);
-            }
-        }
-    }
-
-    void recursiveCopySingle(const string& srcDirStr) {
-        for (const fs::directory_entry& entry : fs::recursive_directory_iterator(srcDirStr)) {
-            const fs::path& currSrcPath = entry.path();
-            const fs::path& currDstPath = this->dstDir / fs::relative(currSrcPath, this->srcDir);
-            struct stat srcStat, dstStat;
-            if (stat(currSrcPath.c_str(), &srcStat)) {
-                LOG(FATAL) << "[RecursiveCopier::recursiveCopy] cannot open src dir: " << srcDirStr;
-            }
-            if (S_ISREG(srcStat.st_mode)) {
-                handleFile(currSrcPath, currDstPath, srcStat);
-            } else if (S_ISDIR(srcStat.st_mode)) {
-                handleDir(currSrcPath, currDstPath);
-            } else {
-                LOG(FATAL) << "[RecursiveCopier::recursiveCopy] undefined code path!";
-            }
-        }
-    }
-
     void recursiveCopy() {
         for (const fs::directory_entry& entry : fs::recursive_directory_iterator(this->srcDir)) {
             const fs::path& currSrcPath = entry.path();
@@ -223,6 +192,109 @@ public:
             } else {
                 LOG(FATAL) << "[RecursiveCopier::recursiveCopy] undefined code path!";
             }
+        }
+    }
+
+    void recursiveCopyMultiThread() {
+        vector<thread> workers;
+        for (const fs::directory_entry& entry : fs::directory_iterator(this->srcDir)) {
+            const fs::path& currSrcPath = entry.path();
+            if (fs::is_directory(currSrcPath)) {
+                thread worker(RecursiveCopier::recursiveCopyWorker, currSrcPath.string(), this->params);
+                workers.push_back(std::move(worker));
+                // recursiveCopySingle(currSrcPath.string());
+            } else {
+                const fs::path& currDstPath = this->dstDir / fs::relative(currSrcPath, this->srcDir);
+                struct stat srcStat;
+                stat(currSrcPath.c_str(), &srcStat);
+                handleFile(currSrcPath, currDstPath, srcStat);
+            }
+        }
+        for (thread& worker : workers) {
+            if (worker.joinable()) { worker.join(); }
+        }
+    }
+
+    static void recursiveCopyWorker(const string& srcDirStr, const AIOParam& aioParams) {
+        for (const fs::directory_entry& entry : fs::recursive_directory_iterator(srcDirStr)) {
+            const fs::path& currSrcPath = entry.path();
+            const fs::path& currDstPath = srcDirStr / fs::relative(currSrcPath, srcDirStr);
+            struct stat srcStat, dstStat;
+            if (stat(currSrcPath.c_str(), &srcStat)) {
+                LOG(FATAL) << "[RecursiveCopier::recursiveCopy] cannot open src dir: " << srcDirStr;
+            }
+            if (S_ISREG(srcStat.st_mode)) {
+                handleFileWorker(currSrcPath, currDstPath, aioParams);
+            } else if (S_ISDIR(srcStat.st_mode)) {
+                handleDirWorker(currSrcPath, currDstPath);
+            } else {
+                LOG(FATAL) << "[RecursiveCopier::recursiveCopy] undefined code path!";
+            }
+        }
+    }
+
+    static void handleFileWorker(const fs::path& srcPath, const fs::path& dstPath, const AIOParam& aioParams) {
+        struct stat srcStat;
+        stat(srcPath.c_str(), &srcStat);
+        // if (stat(srcPath.c_str(), &srcStat) < 0) {
+        //     LOG(FATAL) << "[RecursiveCopier::handleFileWorker]";
+        // }
+        if (srcStat.st_size <= srcStat.st_blksize) {
+            int fdSrc, fdDst;
+            fdSrc = open(srcPath.c_str(), O_RDONLY); // don't need to check this open
+            if (access(dstPath.c_str(), F_OK)) {
+                fdDst = open(dstPath.c_str(), O_CREAT | O_EXCL, srcStat.st_mode);
+                if (fdDst < 0) {
+                    LOG(FATAL) << "[RecursiveCopier::handleFile] failed to create dst file: "
+                               << dstPath;
+                }
+                close(fdDst);
+            }
+            fdDst = open(dstPath.c_str(), O_TRUNC | O_WRONLY);
+            if (fdDst < 0) {
+                LOG(FATAL) << "[RecursiveCopier::handleFile] failed to open dst file: "
+                            << dstPath;
+            }
+            int nbytes = sendfile(fdDst, fdSrc, 0, srcStat.st_size);
+            if (nbytes < srcStat.st_size) {
+                LOG(ERROR) << "[RecursiveCopier::handleFile] Requsted sendfile size doesn't match with responded size\n"
+                           << "Requested: " << srcStat.st_size << "; Responded: " << nbytes;
+            }
+            close(fdSrc);
+            close(fdDst);
+        } else {
+            string srcPathStr = srcPath.string();
+            string dstPathStr = dstPath.string();
+            Copier copier(srcPathStr, dstPathStr, aioParams);
+            copier.copy();
+            RecursiveCopier::handleCallbackWorker(true, aioParams);
+        }
+    }
+
+    static void handleDirWorker(const fs::path& srcPath, const fs::path& dstPath) {
+        struct stat srcStat, dstStat;
+        if (stat(dstPath.c_str(), &dstStat)) {
+            if (!fs::create_directory(dstPath)) {
+                LOG(FATAL) << "[RecursiveCopier::handleDir] failed creating the dst dir: " << dstPath; 
+            }
+        } else if (S_ISREG(dstStat.st_mode)) {
+            LOG(FATAL) << "[RecursiveCopier::handleDir] we have naming conflicts in dstDir... "
+                       << "expected empty or some directory, but got a file";
+        }
+    }
+
+    static void handleCallbackWorker(const bool isTimeout, const AIOParam aioParams) {
+        io_event events[aioParams.nMaxRCopierEvents]; // TODO FIXME
+        int nrEvents;
+        if (isTimeout) {
+            nrEvents = io_getevents(ctx, 0, aioParams.nMaxRCopierEvents, events, NULL);
+        } else  {
+             nrEvents = io_getevents(ctx, 0, aioParams.nMaxRCopierEvents, events, NULL);
+            //  nrEvents = io_getevents(ctx, 0, aioParams.nMaxRCopierEvents, events, &timeout);
+        }
+        for (size_t eventIdx = 0; eventIdx < nrEvents; eventIdx++) {
+            io_callback_t callback = (io_callback_t)events[eventIdx].data; 
+            callback(ctx, events[eventIdx].obj, events[eventIdx].res, events[eventIdx].res2);
         }
     }
 
