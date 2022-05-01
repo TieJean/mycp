@@ -85,7 +85,8 @@ public:
             iocb* iocbPtr  = new iocb();
             iocbPtr->u.c.buf = new char[this->blksize];
             this->iocbFreeList.emplace_back(iocbPtr);
-            Copier::iocbs2Copiers[iocbPtr] = this;
+            Copier::iocbs2Copiers.emplace(std::make_pair(iocbPtr, this));
+            // Copier::iocbs2Copiers[iocbPtr] = this;
             if (isVerbose) { cout << "[Copier] iocbPtr=" << iocbPtr << endl; }
         }
         // cout << "[Copier] end threadId=" << std::this_thread::get_id()  << endl;
@@ -94,19 +95,31 @@ public:
     ~Copier() {
         for (iocb* iocbPtr : iocbFreeList) {
             iocbs2Copiers.erase(iocbPtr);
-            if (iocbPtr->u.c.buf != nullptr) { delete[] (char*) iocbPtr->u.c.buf; }
-            if (iocbPtr != nullptr) { delete iocbPtr; }
+            if (iocbPtr->u.c.buf != nullptr) { 
+                delete[] (char*) iocbPtr->u.c.buf; 
+                iocbPtr->u.c.buf = nullptr;
+            }
+            if (iocbPtr != nullptr) { 
+                delete iocbPtr; 
+                iocbPtr = nullptr;
+            }
         }
         // this shouldn't happen
-        for (iocb* iocbPtr : iocbBusyList) {
-            LOG(INFO) << "For some reason, your iocbBusyList is not empty when deconstructor is called...";
-            iocbs2Copiers.erase(iocbPtr);
-            if (iocbPtr->u.c.buf != nullptr) { delete[] (char*) iocbPtr->u.c.buf; }
-            if (iocbPtr != nullptr) { delete iocbPtr; }
-        }
+        // for (iocb* iocbPtr : iocbBusyList) {
+        //     LOG(INFO) << "For some reason, your iocbBusyList is not empty when deconstructor is called...";
+        //     iocbs2Copiers.erase(iocbPtr);
+        //     if (iocbPtr->u.c.buf != nullptr) { 
+        //         delete[] (char*) iocbPtr->u.c.buf; 
+        //         iocbPtr->u.c.buf = nullptr;
+        //     }
+        //     if (iocbPtr != nullptr) { 
+        //         delete iocbPtr; 
+        //         iocbPtr = nullptr;
+        //     }
+        // }
 
         close(this->fdSrc);
-        close(this->fdDst); // TODO FIXME
+        close(this->fdDst); 
     }
 
     void copy() {
@@ -201,8 +214,10 @@ public:
         vector<thread> workers;
         for (const fs::directory_entry& entry : fs::directory_iterator(this->srcDir)) {
             const fs::path& currSrcPath = entry.path();
+            const fs::path& currDstPath = this->dstDir / fs::relative(currSrcPath, this->srcDir);
             if (fs::is_directory(currSrcPath)) {
-                thread worker(RecursiveCopier::recursiveCopyWorker, currSrcPath.string(), this->params);
+                handleDir(currSrcPath, currDstPath);
+                thread worker(RecursiveCopier::recursiveCopyWorker, currSrcPath.string(), currDstPath.string(), this->params);
                 workers.push_back(std::move(worker));
                 // recursiveCopySingle(currSrcPath.string());
             } else {
@@ -217,10 +232,10 @@ public:
         }
     }
 
-    static void recursiveCopyWorker(const string& srcDirStr, const AIOParam& aioParams) {
+    static void recursiveCopyWorker(const string& srcDirStr, const string& dstDirStr, const AIOParam& aioParams) {
         for (const fs::directory_entry& entry : fs::recursive_directory_iterator(srcDirStr)) {
             const fs::path& currSrcPath = entry.path();
-            const fs::path& currDstPath = srcDirStr / fs::relative(currSrcPath, srcDirStr);
+            const fs::path& currDstPath = dstDirStr / fs::relative(currSrcPath, srcDirStr);
             struct stat srcStat, dstStat;
             if (stat(currSrcPath.c_str(), &srcStat)) {
                 LOG(FATAL) << "[RecursiveCopier::recursiveCopy] cannot open src dir: " << srcDirStr;

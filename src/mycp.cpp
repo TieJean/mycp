@@ -17,24 +17,25 @@ void shutdown() {
 
 unordered_map<iocb*, Copier*> Copier::iocbs2Copiers;
 void Copier::readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2) {
-    cout << "[readCallback] threadId=" << std::this_thread::get_id() << endl;
     if (res2 != 0) { LOG(ERROR) << "error in readCallback"; }
     if (res != iocbPtr->u.c.nbytes) {
         LOG(ERROR) << "Requested read size doesn't match with responded read size\n" 
                    << "Requested: " << iocbPtr->u.c.nbytes << "; Responded: " << res;
     }
+    if (iocbs2Copiers.find(iocbPtr) == iocbs2Copiers.end()) {
+        return;
+    }
     int fd = iocbs2Copiers[iocbPtr]->fdDst;
     io_prep_pwrite(iocbPtr, fd, iocbPtr->u.c.buf, iocbPtr->u.c.nbytes, iocbPtr->u.c.offset);
     io_set_callback(iocbPtr, Copier::writeCallback);
     int nr = io_submit(ctx, 1, &iocbPtr);
-    if ( nr != 1) {
-        LOG(FATAL) << "io_submit failed in readCallback\n" 
-                   << "Requsted: 1; Responded: " << nr;
+    if ( nr != 1 ) {
+        // LOG(FATAL) << "io_submit failed in readCallback\n" 
+        //            << "Requsted: 1; Responded: " << nr;
     }
 }
 
 void Copier::writeCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2) {
-    cout << "[writeCallback] threadId=" << std::this_thread::get_id() << endl;
     if (res2 != 0) { LOG(ERROR) << "error in writeCallback"; }
     if (res != iocbPtr->u.c.nbytes) {
         LOG(ERROR) << "Requested write size doesn't match with responded write size\n" 
@@ -44,6 +45,9 @@ void Copier::writeCallback(io_context_t ctx, struct iocb *iocbPtr, long res, lon
         cout << "iocbPtr: " << iocbPtr << endl;
         cout << "iocbs2Copiers[iocbPtr]->iocbFreeList: " << &iocbs2Copiers[iocbPtr]->iocbFreeList << endl;
         cout << "iocbs2Copiers[iocbPtr]->iocbFreeList.size(): " << iocbs2Copiers[iocbPtr]->iocbFreeList.size() << endl;
+    }
+    if (iocbs2Copiers.find(iocbPtr) == iocbs2Copiers.end()) {
+        return;
     }
     if (iocbs2Copiers[iocbPtr]->iocbFreeList.size() > 32) {
         return;
