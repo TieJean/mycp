@@ -17,6 +17,40 @@ void shutdown() {
 }
 
 unordered_map<iocb*, Copier*> Copier::iocbs2Copiers;
+
+Copier::~Copier() {
+    while (!iocbBusyList.empty()) {
+        RecursiveCopier::handleCallbackWorker(false, this->params);
+    }
+    for (iocb* iocbPtr : iocbFreeList) {
+        iocbs2Copiers.erase(iocbPtr);
+        if (iocbPtr->u.c.buf != nullptr) { 
+            delete[] (char*) iocbPtr->u.c.buf; 
+            iocbPtr->u.c.buf = nullptr;
+        }
+        if (iocbPtr != nullptr) { 
+            delete iocbPtr; 
+            iocbPtr = nullptr;
+        }
+    }
+    // this shouldn't happen
+    for (iocb* iocbPtr : iocbBusyList) {
+        LOG(INFO) << "For some reason, your iocbBusyList is not empty when deconstructor is called...";
+        iocbs2Copiers.erase(iocbPtr);
+        if (iocbPtr->u.c.buf != nullptr) { 
+            delete[] (char*) iocbPtr->u.c.buf; 
+            iocbPtr->u.c.buf = nullptr;
+        }
+        if (iocbPtr != nullptr) { 
+            delete iocbPtr; 
+            iocbPtr = nullptr;
+        }
+    }
+
+    close(this->fdSrc);
+    close(this->fdDst); 
+}
+
 void Copier::readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2) {
     if (res2 != 0) { LOG(ERROR) << "error in readCallback"; }
     if (res != iocbPtr->u.c.nbytes) {
@@ -28,17 +62,15 @@ void Copier::readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long
     }
     int fd = iocbs2Copiers[iocbPtr]->fdDst;
     if (fcntl(fd, F_GETFD) == -1) {
-        // iocbs2Copiers[iocbPtr]->iocbFreeList.emplace_back(iocbPtr);
-        // if (iocbs2Copiers[iocbPtr]->offset < iocbs2Copiers[iocbPtr]->filesize) {
-        //     iocbs2Copiers[iocbPtr]->copy();
-        // }
-        return;
+        fd = open(iocbs2Copiers[iocbPtr]->dstPathStr.c_str(), O_WRONLY);
     }
     io_prep_pwrite(iocbPtr, fd, iocbPtr->u.c.buf, iocbPtr->u.c.nbytes, iocbPtr->u.c.offset);
     io_set_callback(iocbPtr, Copier::writeCallback);
     int nr = io_submit(ctx, 1, &iocbPtr);
     if ( nr != 1 ) {
-        cout << "fd=" << fd << ", aio_fildes=" << iocbPtr->aio_fildes << ", aio_lio_opcode=" << iocbPtr->aio_lio_opcode << endl;
+        // cout << "fcntl=" << fcntl(fd, F_GETFD) << endl;
+        // perror("readCallback");
+        // cout << "fd=" << fd << ", aio_fildes=" << iocbPtr->aio_fildes << ", aio_lio_opcode=" << iocbPtr->aio_lio_opcode << endl;
         LOG(FATAL) << "io_submit failed in readCallback\n" 
                    << "Requsted: 1; Responded: " << nr;
     }

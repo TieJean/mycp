@@ -45,6 +45,8 @@ static void readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long 
 static void writeCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2);
 
 public:
+    string srcPathStr;
+    string dstPathStr;
     int fdSrc;
     int fdDst;
     AIOParam params;
@@ -58,6 +60,8 @@ public:
     Copier() {}
     Copier(const string& pathSrc, const string& pathDst, const AIOParam& params) {
         // cout << "[Copier] start threadId=" << std::this_thread::get_id()  << endl;
+        this->srcPathStr = pathSrc;
+        this->dstPathStr = pathDst;
         this->fdSrc = open(pathSrc.c_str(), O_RDONLY);
         if (this->fdSrc < 0) {
             LOG(FATAL) << "failed to open source file: " << pathSrc;
@@ -66,6 +70,7 @@ public:
         if (this->fdDst < 0) {
             LOG(FATAL) << "failed to open destination file: " << pathDst;
         }
+        cout << "fdDst=" << fdDst << ", pathDst=" << pathDst << endl;
         struct stat stat;
         if (fstat(this->fdSrc, &stat) < 0) {
             LOG(FATAL) << "falied to fstat source file: " << pathSrc;
@@ -92,35 +97,7 @@ public:
         // cout << "[Copier] end threadId=" << std::this_thread::get_id()  << endl;
     }
 
-    ~Copier() {
-        for (iocb* iocbPtr : iocbFreeList) {
-            iocbs2Copiers.erase(iocbPtr);
-            if (iocbPtr->u.c.buf != nullptr) { 
-                delete[] (char*) iocbPtr->u.c.buf; 
-                iocbPtr->u.c.buf = nullptr;
-            }
-            if (iocbPtr != nullptr) { 
-                delete iocbPtr; 
-                iocbPtr = nullptr;
-            }
-        }
-        // this shouldn't happen
-        for (iocb* iocbPtr : iocbBusyList) {
-            LOG(INFO) << "For some reason, your iocbBusyList is not empty when deconstructor is called...";
-            iocbs2Copiers.erase(iocbPtr);
-            if (iocbPtr->u.c.buf != nullptr) { 
-                delete[] (char*) iocbPtr->u.c.buf; 
-                iocbPtr->u.c.buf = nullptr;
-            }
-            if (iocbPtr != nullptr) { 
-                delete iocbPtr; 
-                iocbPtr = nullptr;
-            }
-        }
-
-        close(this->fdSrc);
-        close(this->fdDst); 
-    }
+    ~Copier();
 
     void copy() {
         while (!iocbFreeList.empty() && this->offset < this->filesize) {
@@ -257,6 +234,7 @@ public:
         //      << ", srcStat.st_size=" << srcStat.st_size << ", srcStat.st_blksize=" << srcStat.st_blksize;;
         // cout << ", srcPath=" << srcPath << endl;
         if (srcStat.st_size <= srcStat.st_blksize) {
+        // if (srcStat.st_size <= (1 << 30)) {
             int fdSrc, fdDst;
             fdSrc = open(srcPath.c_str(), O_RDONLY); // don't need to check this open
             if (access(dstPath.c_str(), F_OK)) {
@@ -323,8 +301,8 @@ private:
         }
         // small files: if the file is less than one blksize (inclusive)
         // reference: https://stackoverflow.com/questions/10543230/fastest-way-to-copy-data-from-one-file-to-another-in-c-c
-        // if (srcStat.st_size <= srcStat.st_blksize) {
-        if (srcStat.st_size <= 4096) {
+        if (srcStat.st_size <= srcStat.st_blksize) {
+        // if (srcStat.st_size <= 4096) {
             int fdSrc, fdDst;
             fdSrc = open(srcPath.c_str(), O_RDONLY); // don't need to check this open
             if (access(dstPath.c_str(), F_OK)) {
