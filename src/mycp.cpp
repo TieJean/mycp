@@ -17,6 +17,7 @@ void shutdown() {
 
 unordered_map<iocb*, Copier*> Copier::iocbs2Copiers;
 void Copier::readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2) {
+    cout << "[readCallback] threadId=" << std::this_thread::get_id() << endl;
     if (res2 != 0) { LOG(ERROR) << "error in readCallback"; }
     if (res != iocbPtr->u.c.nbytes) {
         LOG(ERROR) << "Requested read size doesn't match with responded read size\n" 
@@ -33,6 +34,7 @@ void Copier::readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long
 }
 
 void Copier::writeCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2) {
+    cout << "[writeCallback] threadId=" << std::this_thread::get_id() << endl;
     if (res2 != 0) { LOG(ERROR) << "error in writeCallback"; }
     if (res != iocbPtr->u.c.nbytes) {
         LOG(ERROR) << "Requested write size doesn't match with responded write size\n" 

@@ -57,6 +57,7 @@ public:
 
     Copier() {}
     Copier(const string& pathSrc, const string& pathDst, const AIOParam& params) {
+        // cout << "[Copier] start threadId=" << std::this_thread::get_id()  << endl;
         this->fdSrc = open(pathSrc.c_str(), O_RDONLY);
         if (this->fdSrc < 0) {
             LOG(FATAL) << "failed to open source file: " << pathSrc;
@@ -87,6 +88,7 @@ public:
             Copier::iocbs2Copiers[iocbPtr] = this;
             if (isVerbose) { cout << "[Copier] iocbPtr=" << iocbPtr << endl; }
         }
+        // cout << "[Copier] end threadId=" << std::this_thread::get_id()  << endl;
     }
 
     ~Copier() {
@@ -235,10 +237,10 @@ public:
 
     static void handleFileWorker(const fs::path& srcPath, const fs::path& dstPath, const AIOParam& aioParams) {
         struct stat srcStat;
-        stat(srcPath.c_str(), &srcStat);
-        // if (stat(srcPath.c_str(), &srcStat) < 0) {
-        //     LOG(FATAL) << "[RecursiveCopier::handleFileWorker]";
-        // }
+        int ret = stat(srcPath.c_str(), &srcStat);
+        // cout << "[handleFileWorker] threadId=" << std::this_thread::get_id() 
+        //      << ", srcStat.st_size=" << srcStat.st_size << ", srcStat.st_blksize=" << srcStat.st_blksize;;
+        // cout << ", srcPath=" << srcPath << endl;
         if (srcStat.st_size <= srcStat.st_blksize) {
             int fdSrc, fdDst;
             fdSrc = open(srcPath.c_str(), O_RDONLY); // don't need to check this open
@@ -263,6 +265,7 @@ public:
             close(fdSrc);
             close(fdDst);
         } else {
+            // cout << "[handleFileWorker] threadId=" << std::this_thread::get_id() << endl;
             string srcPathStr = srcPath.string();
             string dstPathStr = dstPath.string();
             Copier copier(srcPathStr, dstPathStr, aioParams);
