@@ -57,7 +57,7 @@ public:
         if (this->fdSrc < 0) {
             LOG(FATAL) << "failed to open source file: " << pathSrc;
         }
-        this->fdDst = open(pathDst.c_str(), O_WRONLY | O_TRUNC | O_CREAT);
+        this->fdDst = open(pathDst.c_str(), O_WRONLY | O_TRUNC | O_CREAT, S_IRWXU);
         if (this->fdDst < 0) {
             LOG(FATAL) << "failed to open destination file: " << pathDst;
         }
@@ -191,7 +191,7 @@ private:
             int fdSrc, fdDst;
             fdSrc = open(srcPath.c_str(), O_RDONLY); // don't need to check this open
             if (access(dstPath.c_str(), F_OK)) {
-                fdDst = open(dstPath.c_str(), O_CREAT | O_EXCL, srcStat.st_mode);
+                fdDst = open(dstPath.c_str(), O_CREAT | O_EXCL, S_IRWXU);
                 if (fdDst < 0) {
                     LOG(FATAL) << "[RecursiveCopier::handleFile] failed to create dst file: "
                                << dstPath;
