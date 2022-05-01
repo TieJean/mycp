@@ -16,11 +16,13 @@ int main(int argc, char **argv) {
         LOG(FATAL) << "missing src or dest";
     }
 
-    mycp::init(16);
-
     AIOParam params;
     params.nMaxCopierEvents  = 4;
-    params.nMaxRCopierEvents = 32;
+    params.nMaxRCopierEvents = 4096;
+    params.timeout.tv_sec = 1;
+    params.timeout.tv_nsec = 0;
+    mycp::init(params.nMaxRCopierEvents);
+
     struct timespec timeout;
     timeout.tv_sec = 1;
     timeout.tv_nsec = 0;

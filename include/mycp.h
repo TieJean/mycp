@@ -24,8 +24,8 @@ namespace fs = boost::filesystem;
 namespace mycp {
 
 struct AIOParam {
-    uint8_t nMaxCopierEvents;
-    uint8_t nMaxRCopierEvents;
+    uint32_t nMaxCopierEvents;
+    uint32_t nMaxRCopierEvents;
     struct timespec timeout;
 };
 
@@ -162,7 +162,7 @@ public:
     ~RecursiveCopier() {}
 
     void recursiveCopy() {
-        for (const fs::directory_entry& entry : fs::directory_iterator(this->srcDir)) {
+        for (const fs::directory_entry& entry : fs::recursive_directory_iterator(this->srcDir)) {
             const fs::path& currSrcPath = entry.path();
             const fs::path& currDstPath = this->dstDir / fs::relative(currSrcPath, this->srcDir);
             struct stat srcStat, dstStat;
@@ -187,7 +187,7 @@ private:
         // small files: if the file is less than one blksize (inclusive)
         // reference: https://stackoverflow.com/questions/10543230/fastest-way-to-copy-data-from-one-file-to-another-in-c-c
         // if (srcStat.st_size <= srcStat.st_blksize) {
-        if (srcStat.st_size <= 1024) {
+        if (srcStat.st_size <= 4096) {
             int fdSrc, fdDst;
             fdSrc = open(srcPath.c_str(), O_RDONLY); // don't need to check this open
             if (access(dstPath.c_str(), F_OK)) {
@@ -214,9 +214,8 @@ private:
             string srcPathStr = srcPath.string();
             string dstPathStr = dstPath.string();
             Copier copier(srcPathStr, dstPathStr, this->params);
-            copier.blksize = 1024;
             copier.copy();
-            handleCallback();
+            handleCallback(true);
         }
     }
 
@@ -232,9 +231,14 @@ private:
         }
     }
 
-    void handleCallback() {
+    void handleCallback(bool isTimeout) {
         io_event events[params.nMaxRCopierEvents]; // TODO FIXME
-        int nrEvents = io_getevents(ctx, 0, params.nMaxRCopierEvents, events, NULL);
+        int nrEvents;
+        if (isTimeout) {
+            nrEvents = io_getevents(ctx, 0, params.nMaxRCopierEvents, events, NULL);
+        } else  {
+             nrEvents = io_getevents(ctx, 0, params.nMaxRCopierEvents, events, &params.timeout);
+        }
         if (isVerbose) {
             cout << "[RecursiveCopier::handleCallback] nrEvents=" << nrEvents << endl;
         }
