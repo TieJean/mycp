@@ -38,6 +38,14 @@ void Copier::writeCallback(io_context_t ctx, struct iocb *iocbPtr, long res, lon
         LOG(ERROR) << "Requested write size doesn't match with responded write size\n" 
                    << "Requested: " << iocbPtr->u.c.nbytes << "; Responded: " << res;
     }
+    if (0) {
+        cout << "iocbPtr: " << iocbPtr << endl;
+        cout << "iocbs2Copiers[iocbPtr]->iocbFreeList: " << &iocbs2Copiers[iocbPtr]->iocbFreeList << endl;
+        cout << "iocbs2Copiers[iocbPtr]->iocbFreeList.size(): " << iocbs2Copiers[iocbPtr]->iocbFreeList.size() << endl;
+    }
+    if (iocbs2Copiers[iocbPtr]->iocbFreeList.size() > 32) {
+        return;
+    }
     iocbs2Copiers[iocbPtr]->iocbFreeList.emplace_back(iocbPtr);
 
     if (iocbs2Copiers[iocbPtr]->offset < iocbs2Copiers[iocbPtr]->filesize) {

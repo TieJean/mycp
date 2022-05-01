@@ -5,17 +5,20 @@
 #include <unistd.h>
 #include <iostream>
 #include <unordered_map>
+#include <unordered_set>
 #include <libaio.h>
 #include <stdint.h>
 #include <string.h>
 #include <filesystem>
 #include <boost/filesystem.hpp>
- #include <sys/sendfile.h>
+#include <sys/sendfile.h>
+#include<thread>
 
 #include "trie.h"
 
 using std::vector;
 using std::unordered_map;
+using std::unordered_set;
 using std::string;
 using std::cout;
 using std::endl;
@@ -68,16 +71,21 @@ public:
         this->filesize = stat.st_size;
         this->blksize  = stat.st_blksize;
         this->params = params;
-        iocbFreeList.reserve(params.nMaxCopierEvents);
-        iocbBusyList.reserve(params.nMaxCopierEvents);
-
+        this->iocbFreeList.reserve(params.nMaxCopierEvents);
+        this->iocbBusyList.reserve(params.nMaxCopierEvents);
+        if (isVerbose) {
+            cout << endl;
+            cout << "[Copier] pathSrc=" << pathSrc << ", pathDst=" << pathDst 
+                << ", this=" << this << endl;
+            cout << "[Copier] iocbFreeList=: " << &(this->iocbFreeList) << endl;
+        }
         for (size_t i = 0; i < params.nMaxCopierEvents; ++i) {
             iocb* iocbPtr  = new iocb();
             iocbPtr->u.c.buf = new char[this->blksize];
-            iocbFreeList.emplace_back(iocbPtr);
+            this->iocbFreeList.emplace_back(iocbPtr);
             Copier::iocbs2Copiers[iocbPtr] = this;
+            if (isVerbose) { cout << "[Copier] iocbPtr=" << iocbPtr << endl; }
         }
-
     }
 
     ~Copier() {
@@ -95,14 +103,14 @@ public:
         }
 
         close(this->fdSrc);
-        close(this->fdDst);
+        close(this->fdDst); // TODO FIXME
     }
 
     void copy() {
         while (!iocbFreeList.empty() && this->offset < this->filesize) {
             size_t rwSize = this->filesize - this->offset < this->blksize ? 
                             this->filesize - this->offset : this->blksize;
-            iocb* iocbPtr = iocbFreeList[iocbFreeList.size()-1];
+            iocb* iocbPtr = iocbFreeList.back();
             iocbFreeList.pop_back();
             iocbPtr->u.c.nbytes = rwSize;
             iocbPtr->u.c.offset = offset;
@@ -111,12 +119,19 @@ public:
             iocbBusyList.emplace_back(iocbPtr);
             this->offset += rwSize;
         }
-
+        if (isVerbose) {
+            cout << "[Copier::copy] offset=" << this->offset << endl;
+            cout << "[Copier::copy] iocbBusyList.size(): " << iocbBusyList.size() << ", iocbFreeList.size(): " << iocbFreeList.size() << endl;
+        }
         if (iocbBusyList.size() == this->params.nMaxCopierEvents || this->offset >= this->filesize) {
             int nr = io_submit(ctx, this->iocbBusyList.size(), this->iocbBusyList.data());
             if (nr != this->iocbBusyList.size()) {
                 LOG(INFO) << "Requested event nr doesn't match responded event nr\n"
                           << "Requested: " << this->iocbBusyList.size() << "Responded: " << nr;
+            }
+            if (isVerbose) {
+                cout << "[Copier::copy] this->iocbFreeList.size(): " << this->iocbFreeList.size()
+                     << ", this->iocbFreeList=" << &(this->iocbFreeList) << endl;
             }
             this->iocbBusyList.erase(this->iocbBusyList.begin(), this->iocbBusyList.begin() + nr);
         }
@@ -160,6 +175,38 @@ public:
     }
 
     ~RecursiveCopier() {}
+
+    void recursiveCopyMulti() {
+        for (const fs::directory_entry& entry : fs::directory_iterator(this->srcDir)) {
+            const fs::path& currSrcPath = entry.path();
+            if (fs::is_directory(currSrcPath)) {
+                recursiveCopySingle(currSrcPath.string());
+            } else {
+                const fs::path& currDstPath = this->dstDir / fs::relative(currSrcPath, this->srcDir);
+                struct stat srcStat;
+                stat(currSrcPath.c_str(), &srcStat);
+                handleFile(currSrcPath, currDstPath, srcStat);
+            }
+        }
+    }
+
+    void recursiveCopySingle(const string& srcDirStr) {
+        for (const fs::directory_entry& entry : fs::recursive_directory_iterator(srcDirStr)) {
+            const fs::path& currSrcPath = entry.path();
+            const fs::path& currDstPath = this->dstDir / fs::relative(currSrcPath, this->srcDir);
+            struct stat srcStat, dstStat;
+            if (stat(currSrcPath.c_str(), &srcStat)) {
+                LOG(FATAL) << "[RecursiveCopier::recursiveCopy] cannot open src dir: " << srcDirStr;
+            }
+            if (S_ISREG(srcStat.st_mode)) {
+                handleFile(currSrcPath, currDstPath, srcStat);
+            } else if (S_ISDIR(srcStat.st_mode)) {
+                handleDir(currSrcPath, currDstPath);
+            } else {
+                LOG(FATAL) << "[RecursiveCopier::recursiveCopy] undefined code path!";
+            }
+        }
+    }
 
     void recursiveCopy() {
         for (const fs::directory_entry& entry : fs::recursive_directory_iterator(this->srcDir)) {
@@ -238,6 +285,7 @@ private:
             nrEvents = io_getevents(ctx, 0, params.nMaxRCopierEvents, events, NULL);
         } else  {
              nrEvents = io_getevents(ctx, 0, params.nMaxRCopierEvents, events, &params.timeout);
+            //  nrEvents = io_getevents(ctx, 0, params.nMaxRCopierEvents, events, NULL);
         }
         if (isVerbose) {
             cout << "[RecursiveCopier::handleCallback] nrEvents=" << nrEvents << endl;

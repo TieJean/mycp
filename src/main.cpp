@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
     }
 
     AIOParam params;
-    params.nMaxCopierEvents  = 4;
+    params.nMaxCopierEvents  = 32;
     params.nMaxRCopierEvents = 4096;
     params.timeout.tv_sec = 1;
     params.timeout.tv_nsec = 0;
@@ -28,7 +28,8 @@ int main(int argc, char **argv) {
     timeout.tv_nsec = 0;
     params.timeout = timeout;
     RecursiveCopier rCopier(FLAGS_src, FLAGS_dst, params);
-    rCopier.recursiveCopy();
+    // rCopier.recursiveCopy();
+    rCopier.recursiveCopyMulti();
 
     mycp::shutdown();
 
