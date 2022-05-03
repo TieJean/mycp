@@ -70,7 +70,7 @@ public:
         if (this->fdDst < 0) {
             LOG(FATAL) << "failed to open destination file: " << pathDst;
         }
-        cout << "fdDst=" << fdDst << ", pathDst=" << pathDst << endl;
+        // cout << "fdDst=" << fdDst << ", pathDst=" << pathDst << endl;
         struct stat stat;
         if (fstat(this->fdSrc, &stat) < 0) {
             LOG(FATAL) << "falied to fstat source file: " << pathSrc;
@@ -233,8 +233,8 @@ public:
         // cout << "[handleFileWorker] threadId=" << std::this_thread::get_id() 
         //      << ", srcStat.st_size=" << srcStat.st_size << ", srcStat.st_blksize=" << srcStat.st_blksize;;
         // cout << ", srcPath=" << srcPath << endl;
-        if (srcStat.st_size <= srcStat.st_blksize) {
-        // if (srcStat.st_size <= (1 << 30)) {
+        // if (srcStat.st_size <= srcStat.st_blksize) {
+        if (1) {
             int fdSrc, fdDst;
             fdSrc = open(srcPath.c_str(), O_RDONLY); // don't need to check this open
             if (access(dstPath.c_str(), F_OK)) {

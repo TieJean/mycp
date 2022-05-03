@@ -1,5 +1,4 @@
-# declare -a TESTNAMES=("BTreeLargeFilesTest")   
-declare -a TESTNAMES=("BTreeSmallFilesTest" "BTreeLargeFilesTest")   
+declare -a TESTNAMES=("SingleLargeFileTest BTreeSmallFilesTest BTreeMediumFilesTest BTreeLargeFilesTest DTreeMediumFilesTest")
 
 # DATA_DIR="$(pwd)/data/"
 DATA_DIR="/home/taijing/project/data/"
@@ -11,10 +10,10 @@ for test_name in ${TESTNAMES[@]}; do
     dst_path="${DATA_DIR}${test_name}/dst/"
     echo "---${test_name}---"
 
-    echo "cp: cp -r ${src_path} ${dst_path}"
-    ./bin/flush_main
-    rm -rf ${dst_path}*
-    time cp -r ${src_path} ${dst_path}
+    # echo "cp: cp -r ${src_path} ${dst_path}"
+    # ./bin/flush_main
+    # rm -rf ${dst_path}*
+    # time cp -r ${src_path} ${dst_path}
 
     echo "mycp: ./bin/main --src=${src_path} --dst=${dst_path}"
     ./bin/flush_main
