@@ -36,15 +36,16 @@ struct AIOParam {
 extern io_context_t ctx;
 void init(const unsigned nEvents);
 void shutdown();
+size_t iocbPtr2Idx(struct iocb *iocbPtr);
 
 class Copier {
-
-static unordered_map<iocb*, Copier*> iocbs2Copiers;
 
 static void readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2);
 static void writeCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2);
 
 public:
+    static Copier* iocbs2Copiers[65536];
+
     string srcPathStr;
     string dstPathStr;
     int fdSrc;
@@ -70,7 +71,7 @@ public:
         if (this->fdDst < 0) {
             LOG(FATAL) << "failed to open destination file: " << pathDst;
         }
-        cout << "fdDst=" << fdDst << ", pathDst=" << pathDst << endl;
+        if (isVerbose) { cout << "fdDst=" << fdDst << ", pathDst=" << pathDst << endl; }
         struct stat stat;
         if (fstat(this->fdSrc, &stat) < 0) {
             LOG(FATAL) << "falied to fstat source file: " << pathSrc;
@@ -90,8 +91,8 @@ public:
             iocb* iocbPtr  = new iocb();
             iocbPtr->u.c.buf = new char[this->blksize];
             this->iocbFreeList.emplace_back(iocbPtr);
-            Copier::iocbs2Copiers.emplace(std::make_pair(iocbPtr, this));
-            // Copier::iocbs2Copiers[iocbPtr] = this;
+            size_t iocbPtrIdx = iocbPtr2Idx(iocbPtr);
+            Copier::iocbs2Copiers[iocbPtrIdx] = this;
             if (isVerbose) { cout << "[Copier] iocbPtr=" << iocbPtr << endl; }
         }
         // cout << "[Copier] end threadId=" << std::this_thread::get_id()  << endl;
@@ -230,9 +231,6 @@ public:
     static void handleFileWorker(const fs::path& srcPath, const fs::path& dstPath, const AIOParam& aioParams) {
         struct stat srcStat;
         int ret = stat(srcPath.c_str(), &srcStat);
-        // cout << "[handleFileWorker] threadId=" << std::this_thread::get_id() 
-        //      << ", srcStat.st_size=" << srcStat.st_size << ", srcStat.st_blksize=" << srcStat.st_blksize;;
-        // cout << ", srcPath=" << srcPath << endl;
         if (srcStat.st_size <= srcStat.st_blksize) {
         // if (srcStat.st_size <= (1 << 30)) {
             int fdSrc, fdDst;
