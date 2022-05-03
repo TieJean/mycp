@@ -32,13 +32,12 @@ public:
     void flushL1DCache();
 
     void CreateDebug();
+    void CreateSingleLargeFile();
     void CreateBTreeSmallFiles();
     void CreateBTreeMediumFiles();
     void CreateBTreeLargeFiles();
-    void CreateDTreeSmallFiles();
-    void CreateDTreeLargeFiles();
+    void CreateDTreeMediumFiles();
     void CreateBTreeHybrid();
-    void CreateDTreeHybrid();
     void CreateDirectoryOnly();
 
 private:

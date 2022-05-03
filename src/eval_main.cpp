@@ -14,7 +14,9 @@ int main(int argc, char **argv) {
     Evaluator eval(FLAGS_data_dir);
     eval.isVerbose = true;
     eval.CreateDebug();
+    eval.CreateSingleLargeFile();
     eval.CreateBTreeSmallFiles();
     eval.CreateBTreeMediumFiles();
     eval.CreateBTreeLargeFiles();
+    eval.CreateDTreeMediumFiles();
 }
