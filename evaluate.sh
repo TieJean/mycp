@@ -1,4 +1,4 @@
-declare -a TESTNAMES=("BTreeLargeFilesTest")   
+declare -a TESTNAMES=("SingleLargeFileTest BTreeSmallFilesTest BTreeMediumFilesTest BTreeLargeFilesTest DTreeMediumFilesTest")   
 # declare -a TESTNAMES=("BTreeSmallFilesTest" "BTreeLargeFilesTest")   
 
 # DATA_DIR="$(pwd)/data/"
