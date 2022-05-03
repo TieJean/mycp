@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
     }
 
     AIOParam params;
-    params.nMaxCopierEvents  = 128;
+    params.nMaxCopierEvents  = 64;
     params.nMaxRCopierEvents = 16192;
     params.timeout.tv_sec = 1;
     params.timeout.tv_nsec = 0;
@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
     params.timeout = timeout;
     RecursiveCopier rCopier(FLAGS_src, FLAGS_dst, params);
     rCopier.recursiveCopyMultiThread();
-
+    cout << "count: " << Copier::count << endl;
     mycp::shutdown();
 
 }

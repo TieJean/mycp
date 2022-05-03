@@ -8,6 +8,7 @@ namespace mycp {
 io_context_t ctx;
 
 Copier* Copier::iocbs2Copiers[65536];
+size_t Copier::count;
 uint64_t primes[16] = {	4507, 3323, 5437, 	4457, 24373, 65729, 66947, 72221, 
                        14767, 40351, 41771, 	63587, 	2473, 	4139, 7177, 10499};
 uint64_t masks[16] = {0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080,
@@ -28,6 +29,7 @@ void init(const unsigned nEvents) {
     for (size_t i = 0; i < 65536; ++i) {
         Copier::iocbs2Copiers[i] = NULL;
     }
+    Copier::count = 0;
 }
 void shutdown() {
     io_destroy(ctx);
@@ -80,11 +82,12 @@ void Copier::readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long
     io_set_callback(iocbPtr, Copier::writeCallback);
     int nr = io_submit(ctx, 1, &iocbPtr);
     if ( nr != 1 ) {
-        cout << "fcntl=" << fcntl(fd, F_GETFD) << endl;
-        perror("readCallback");
-        cout << "fd=" << fd << ", aio_fildes=" << iocbPtr->aio_fildes << ", aio_lio_opcode=" << iocbPtr->aio_lio_opcode << endl;
-        LOG(FATAL) << "io_submit failed in readCallback\n" 
-                   << "Requsted: 1; Responded: " << nr;
+        ++Copier::count;
+        // cout << "fcntl=" << fcntl(fd, F_GETFD) << endl;
+        // perror("readCallback");
+        // cout << "fd=" << fd << ", aio_fildes=" << iocbPtr->aio_fildes << ", aio_lio_opcode=" << iocbPtr->aio_lio_opcode << endl;
+        // LOG(FATAL) << "io_submit failed in readCallback\n" 
+        //            << "Requsted: 1; Responded: " << nr;
     }
 }
 
@@ -100,9 +103,9 @@ void Copier::writeCallback(io_context_t ctx, struct iocb *iocbPtr, long res, lon
         cout << "iocbs2Copiers[iocbPtr]->iocbFreeList: " << &iocbs2Copiers[iocbPtrIdx]->iocbFreeList << endl;
         cout << "iocbs2Copiers[iocbPtr]->iocbFreeList.size(): " << iocbs2Copiers[iocbPtrIdx]->iocbFreeList.size() << endl;
     }
-    if (iocbs2Copiers[iocbPtrIdx]->iocbFreeList.size() > 32) {
-        return;
-    }
+    // if (iocbs2Copiers[iocbPtrIdx]->iocbFreeList.size() > 32) {
+    //     return;
+    // }
     iocbs2Copiers[iocbPtrIdx]->iocbFreeList.emplace_back(iocbPtr);
 
     if (iocbs2Copiers[iocbPtrIdx]->offset < iocbs2Copiers[iocbPtrIdx]->filesize) {

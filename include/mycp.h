@@ -45,6 +45,7 @@ static void writeCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long
 
 public:
     static Copier* iocbs2Copiers[65536];
+    static size_t count;
 
     string srcPathStr;
     string dstPathStr;
