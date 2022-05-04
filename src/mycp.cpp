@@ -82,12 +82,11 @@ void Copier::readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long
     io_set_callback(iocbPtr, Copier::writeCallback);
     int nr = io_submit(ctx, 1, &iocbPtr);
     if ( nr != 1 ) {
-        ++Copier::count;
-        // cout << "fcntl=" << fcntl(fd, F_GETFD) << endl;
-        // perror("readCallback");
-        // cout << "fd=" << fd << ", aio_fildes=" << iocbPtr->aio_fildes << ", aio_lio_opcode=" << iocbPtr->aio_lio_opcode << endl;
-        // LOG(FATAL) << "io_submit failed in readCallback\n" 
-        //            << "Requsted: 1; Responded: " << nr;
+        cout << "fcntl=" << fcntl(fd, F_GETFD) << endl;
+        perror("readCallback");
+        cout << "fd=" << fd << ", aio_fildes=" << iocbPtr->aio_fildes << ", aio_lio_opcode=" << iocbPtr->aio_lio_opcode << endl;
+        LOG(FATAL) << "io_submit failed in readCallback\n" 
+                   << "Requsted: 1; Responded: " << nr;
     }
 }
 
@@ -103,9 +102,9 @@ void Copier::writeCallback(io_context_t ctx, struct iocb *iocbPtr, long res, lon
         cout << "iocbs2Copiers[iocbPtr]->iocbFreeList: " << &iocbs2Copiers[iocbPtrIdx]->iocbFreeList << endl;
         cout << "iocbs2Copiers[iocbPtr]->iocbFreeList.size(): " << iocbs2Copiers[iocbPtrIdx]->iocbFreeList.size() << endl;
     }
-    // if (iocbs2Copiers[iocbPtrIdx]->iocbFreeList.size() > 32) {
-    //     return;
-    // }
+    if (iocbs2Copiers[iocbPtrIdx]->iocbFreeList.size() > 64) {
+        return;
+    }
     iocbs2Copiers[iocbPtrIdx]->iocbFreeList.emplace_back(iocbPtr);
 
     if (iocbs2Copiers[iocbPtrIdx]->offset < iocbs2Copiers[iocbPtrIdx]->filesize) {

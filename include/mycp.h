@@ -300,8 +300,8 @@ private:
         }
         // small files: if the file is less than one blksize (inclusive)
         // reference: https://stackoverflow.com/questions/10543230/fastest-way-to-copy-data-from-one-file-to-another-in-c-c
-        if (srcStat.st_size <= srcStat.st_blksize) {
-        // if (srcStat.st_size <= 4096) {
+        // if (srcStat.st_size <= srcStat.st_blksize) {
+        if (0) {
             int fdSrc, fdDst;
             fdSrc = open(srcPath.c_str(), O_RDONLY); // don't need to check this open
             if (access(dstPath.c_str(), F_OK)) {
