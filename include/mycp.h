@@ -71,6 +71,8 @@ public:
         iocbFreeList.reserve(params.nMaxCopierEvents);
         iocbBusyList.reserve(params.nMaxCopierEvents);
 
+        posix_fadvise(this->fdSrc, 0, this->filesize,  POSIX_FADV_NOREUSE);
+
         for (size_t i = 0; i < params.nMaxCopierEvents; ++i) {
             iocb* iocbPtr  = new iocb();
             iocbPtr->u.c.buf = new char[this->blksize];

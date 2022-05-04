@@ -24,6 +24,7 @@ void Copier::readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long
     }
     int fd = iocbs2Copiers[iocbPtr]->fdDst;
     io_prep_pwrite(iocbPtr, fd, iocbPtr->u.c.buf, iocbPtr->u.c.nbytes, iocbPtr->u.c.offset);
+    posix_fadvise(fd, iocbPtr->u.c.offset, iocbs2Copiers[iocbPtr]->blksize, POSIX_FADV_NOREUSE);
     io_set_callback(iocbPtr, Copier::writeCallback);
     int nr = io_submit(ctx, 1, &iocbPtr);
     if ( nr != 1) {
