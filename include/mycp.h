@@ -80,6 +80,9 @@ public:
         this->params = params;
         this->iocbFreeList.reserve(params.nMaxCopierEvents);
         this->iocbBusyList.reserve(params.nMaxCopierEvents);
+
+        posix_fadvise(this->fdSrc, 0, this->filesize,  POSIX_FADV_NOREUSE | POSIX_FADV_SEQUENTIAL);
+
         if (isVerbose) {
             cout << endl;
             cout << "[Copier] pathSrc=" << pathSrc << ", pathDst=" << pathDst 
@@ -250,6 +253,7 @@ public:
                 LOG(FATAL) << "[RecursiveCopier::handleFile] failed to open dst file: "
                             << dstPath;
             }
+
             int nbytes = sendfile(fdDst, fdSrc, 0, srcStat.st_size);
             if (nbytes < srcStat.st_size) {
                 LOG(ERROR) << "[RecursiveCopier::handleFile] Requsted sendfile size doesn't match with responded size\n"
@@ -301,7 +305,7 @@ private:
         }
         // small files: if the file is less than one blksize (inclusive)
         // reference: https://stackoverflow.com/questions/10543230/fastest-way-to-copy-data-from-one-file-to-another-in-c-c
-        if (srcStat.st_size <= srcStat.st_blksize) {
+        if (1) {
         // if (srcStat.st_size <= 4096) {
             int fdSrc, fdDst;
             fdSrc = open(srcPath.c_str(), O_RDONLY); // don't need to check this open
@@ -318,7 +322,10 @@ private:
                 LOG(FATAL) << "[RecursiveCopier::handleFile] failed to open dst file: "
                             << dstPath;
             }
+            posix_fadvise(fdSrc, 0, srcStat.st_size,  POSIX_FADV_NOREUSE | POSIX_FADV_SEQUENTIAL);
             int nbytes = sendfile(fdDst, fdSrc, 0, srcStat.st_size);
+            posix_fadvise(fdSrc, 0, srcStat.st_size,  POSIX_FADV_DONTNEED);
+            posix_fadvise(fdDst, 0, srcStat.st_size,  POSIX_FADV_DONTNEED);
             if (nbytes < srcStat.st_size) {
                 LOG(ERROR) << "[RecursiveCopier::handleFile] Requsted sendfile size doesn't match with responded size\n"
                            << "Requested: " << srcStat.st_size << "; Responded: " << nbytes;
