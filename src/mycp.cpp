@@ -36,7 +36,7 @@ void shutdown() {
 }
 
 Copier::~Copier() {
-    while (!iocbBusyList.empty()) {
+    while (!iocbBusyList.empty() || iocbFreeList.size() != this->params.nMaxCopierEvents) {
         RecursiveCopier::handleCallbackWorker(false, this->params);
     }
     for (iocb* iocbPtr : iocbFreeList) {
