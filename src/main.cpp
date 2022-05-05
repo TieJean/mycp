@@ -19,8 +19,8 @@ int main(int argc, char **argv) {
     AIOParam params;
     params.nMaxCopierEvents  = 64;
     params.nMaxRCopierEvents = 16192;
-    params.timeout.tv_sec = 1;
-    params.timeout.tv_nsec = 0;
+    params.timeout.tv_sec = 0;
+    params.timeout.tv_nsec = 10000000;
     mycp::init(params.nMaxRCopierEvents);
 
     struct timespec timeout;
