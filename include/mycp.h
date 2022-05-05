@@ -35,12 +35,11 @@ void shutdown();
 
 class Copier {
 
-static unordered_map<iocb*, Copier*> iocbs2Copiers;
-
 static void readCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2);
 static void writeCallback(io_context_t ctx, struct iocb *iocbPtr, long res, long res2);
 
 public:
+    static unordered_map<iocb*, Copier*> iocbs2Copiers;
     int fdSrc;
     int fdDst;
     AIOParam params;
@@ -82,23 +81,7 @@ public:
 
     }
 
-    ~Copier() {
-        for (iocb* iocbPtr : iocbFreeList) {
-            iocbs2Copiers.erase(iocbPtr);
-            if (iocbPtr->u.c.buf != nullptr) { delete[] (char*) iocbPtr->u.c.buf; }
-            if (iocbPtr != nullptr) { delete iocbPtr; }
-        }
-        // this shouldn't happen
-        for (iocb* iocbPtr : iocbBusyList) {
-            LOG(INFO) << "For some reason, your iocbBusyList is not empty when deconstructor is called...";
-            iocbs2Copiers.erase(iocbPtr);
-            if (iocbPtr->u.c.buf != nullptr) { delete[] (char*) iocbPtr->u.c.buf; }
-            if (iocbPtr != nullptr) { delete iocbPtr; }
-        }
-
-        close(this->fdSrc);
-        close(this->fdDst);
-    }
+    ~Copier();
 
     void copy() {
         while (!iocbFreeList.empty() && this->offset < this->filesize) {
@@ -161,7 +144,9 @@ public:
         }
     }
 
-    ~RecursiveCopier() {}
+    ~RecursiveCopier() {
+        
+    }
 
     void recursiveCopy() {
         for (const fs::directory_entry& entry : fs::recursive_directory_iterator(this->srcDir)) {
@@ -178,6 +163,21 @@ public:
             } else {
                 LOG(FATAL) << "[RecursiveCopier::recursiveCopy] undefined code path!";
             }
+        }
+    }
+
+    static void handleCallbackWorker(const bool isTimeout, const AIOParam aioParams) {
+        io_event events[aioParams.nMaxRCopierEvents]; // TODO FIXME
+        int nrEvents;
+        if (isTimeout) {
+            nrEvents = io_getevents(ctx, 0, aioParams.nMaxRCopierEvents, events, NULL);
+        } else  {
+             nrEvents = io_getevents(ctx, 0, aioParams.nMaxRCopierEvents, events, NULL);
+            //  nrEvents = io_getevents(ctx, 0, aioParams.nMaxRCopierEvents, events, &timeout);
+        }
+        for (size_t eventIdx = 0; eventIdx < nrEvents; eventIdx++) {
+            io_callback_t callback = (io_callback_t)events[eventIdx].data; 
+            callback(ctx, events[eventIdx].obj, events[eventIdx].res, events[eventIdx].res2);
         }
     }
 
@@ -239,7 +239,7 @@ private:
         if (isTimeout) {
             nrEvents = io_getevents(ctx, 0, params.nMaxRCopierEvents, events, NULL);
         } else  {
-             nrEvents = io_getevents(ctx, 0, params.nMaxRCopierEvents, events, &params.timeout);
+             nrEvents = io_getevents(ctx, 0, params.nMaxRCopierEvents, events, NULL);
         }
         if (isVerbose) {
             cout << "[RecursiveCopier::handleCallback] nrEvents=" << nrEvents << endl;

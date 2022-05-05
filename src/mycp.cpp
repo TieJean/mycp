@@ -12,7 +12,35 @@ void init(const unsigned nEvents) {
     }
 }
 void shutdown() {
+    // AIOParam params;
+    // params.nMaxCopierEvents  = 128;
+    // params.nMaxRCopierEvents = 16192;
+    // while (!Copier::iocbs2Copiers.empty()) {
+    //     RecursiveCopier::handleCallbackWorker(false, params);
+    // }
     io_destroy(ctx);
+}
+
+Copier::~Copier() {
+    while (!iocbBusyList.empty() || iocbFreeList.size() != this->params.nMaxCopierEvents) {
+        RecursiveCopier::handleCallbackWorker(false, this->params);
+    }
+
+    for (iocb* iocbPtr : iocbFreeList) {
+        iocbs2Copiers.erase(iocbPtr);
+        if (iocbPtr->u.c.buf != nullptr) { delete[] (char*) iocbPtr->u.c.buf; }
+        if (iocbPtr != nullptr) { delete iocbPtr; }
+    }
+    // this shouldn't happen
+    for (iocb* iocbPtr : iocbBusyList) {
+        LOG(INFO) << "For some reason, your iocbBusyList is not empty when deconstructor is called...";
+        iocbs2Copiers.erase(iocbPtr);
+        if (iocbPtr->u.c.buf != nullptr) { delete[] (char*) iocbPtr->u.c.buf; }
+        if (iocbPtr != nullptr) { delete iocbPtr; }
+    }
+
+    close(this->fdSrc);
+    close(this->fdDst);
 }
 
 unordered_map<iocb*, Copier*> Copier::iocbs2Copiers;
